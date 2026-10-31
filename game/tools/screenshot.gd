@@ -1,9 +1,10 @@
 extends SceneTree
 ## Render the game in a chosen state and save the left part as a PNG. Run (not headless):
-## godot --path . --script res://tools/screenshot.gd -- /tmp/shot.png [bag|rune|forge|portal] [stage=13] [wave=11]
-## Uses sample bag/runes/party so panels have something to show. Does not touch the save file.
+## godot --path . --script res://tools/screenshot.gd -- /tmp/shot.png [bag|hero|forge|rune|portal|settings] [stage=13] [diff=1] [boss] [t=3]
+## Builds a sample mid-game save in memory. Does not touch the real save file.
 
 const Sim := preload("res://sim.gd")
+const D := preload("res://data.gd")
 
 
 func _initialize() -> void:
@@ -12,38 +13,53 @@ func _initialize() -> void:
 	root.add_child(main)
 	await process_frame
 	var s = main.sim
-	s.bag = {Sim.key("weapon", 0): 12, Sim.key("weapon", 2): 3, Sim.key("gloves", 1): 9,
-		Sim.key("ring", 3): 2, Sim.key("ring", 4): 1}
-	s.equip("weapon", 2)
-	s.runes = {"growth": 5, "repose": 1, "greed": 2, "chest_time": 1, "haste": 1, "command": 1, "command2": 1, "might": 2, "focus": 1, "mastery": 12}
-	s.heroes[1].level = 4
-	s.heroes[2].level = 3
-	s.heroes[0].enh = {"weapon": 8, "gloves": 3, "ring": 2}
-	s.heroes[1].enh = {"weapon": 5, "gloves": 0, "ring": 0}
-	s.gold = 2000
-	s.max_stage = 14
-	main.sel_slot = "ring"
-	main.sel_tier = 3
-	main.sel_rune = "mastery"
+	s.rng.seed = 42
+	s.gold = 5_000_000
+	for r in ["growth", "unlock_ranger", "command", "unlock_cleric", "unlock_sorcerer", "command2", "vitality", "greed", "might"]:
+		s.buy_rune(r)
+	s.gold = 1_234_567
+	s.max_stage = [30, 30, 12, 0]
+	s.stones = [12, 5, 3, 1, 0]
+	for c in s.owned:
+		s.heroes[c].level = 34
+		for sk in D.SKILLS[c]:
+			s.learn(c, sk.id, 25)
+	s.set_party_slot(0, "knight")
+	s.set_party_slot(1, "ranger")
+	s.set_party_slot(2, "sorcerer")
+	for c in s.party:
+		for sl in D.SLOTS:
+			var it: Dictionary = s.make_item(sl, 2 + s.rng.randi() % 4)
+			if sl == "weapon":
+				it.kind = D.CLASSES[c].weapon
+			if sl == "armor":
+				it.kind = D.CLASSES[c].armor_kind
+			it.enh = s.rng.randi() % 12
+			s.bag.append(it)
+			s.equip(c, it.uid)
+	for i in 30:
+		s._receive(s.make_item(D.SLOTS[i % 6], s.roll_rarity()))
+	s.bag[3].locked = true
+	main.sel_item = s.heroes.knight.equip.weapon.uid
+	var t := 2.0
 	for a in args:
 		if a.begins_with("stage="):
 			s.stage = int(a.substr(6))
-		elif a.begins_with("wave="):
-			s.wave = int(a.substr(5))
-		elif a in ["bag", "rune", "forge", "portal"]:
-			main._toggle_panel(a)
-	s._spawn()
-	main._toast_left = 0.0  # hide toasts left over from loading the real save
-	for i in 5:
-		await process_frame
-	if "fire" in args:  # freeze projectiles mid-flight
-		main._fire_t = 0.12
-		main._swing[2] = 0.3
-		main._arrow_t = 0.07
-		main._swing[1] = 0.1
+		elif a.begins_with("diff="):
+			s.diff = int(a.substr(5))
+		elif a.begins_with("t="):
+			t = float(a.substr(2))
+		elif a in ["bag", "hero", "forge", "rune", "portal", "settings"]:
+			main.toggle_panel(a)
+	s._start_stage()
+	if "boss" in args:
+		s.wave = s.waves_in_stage() + 1
+	main._toast_left = 0.0
+	for i in int(t * 30):  # let the battle run a little so effects are on screen
+		main._process(1.0 / 30.0)
 		await process_frame
 	var path: String = args[0] if args.size() > 0 and args[0].ends_with(".png") else "/tmp/shot.png"
 	var img := root.get_texture().get_image()
-	img.get_region(Rect2i(0, 0, mini(img.get_width(), 1300), img.get_height())).save_png(path)  # left side: HUD + panels
+	img.get_region(Rect2i(0, 0, mini(img.get_width(), 1700), img.get_height())).save_png(path)
 	print("saved ", path)
 	quit()

@@ -1,150 +1,72 @@
 extends RefCounted
-## Combat and economy logic, no rendering. The same numbers drive live play and offline reward.
+## Game rules, no rendering. Numbers live in data.gd. The UI reads state and `events`, and calls the action functions.
 
-const WAVES_PER_STAGE := 10
-const STAGES_PER_ACT := 10
-const ACT_NAMES := ["Đồng cỏ", "Sa mạc", "Rừng tối"]
-const MAX_STAGE := STAGES_PER_ACT * 3  # keep in sync with ACT_NAMES (checked by test_sim.gd)
-const BOSS_HP_MULT := 4.0
-const ACT_BOSS_HP_MULT := 1.2  # extra on top of BOSS_HP_MULT for the X-10 boss
+const D := preload("res://data.gd")
+const SAVE_VERSION := 2
 
-## Balance knobs. Tune with tools/balance.gd.
-const HP_BASE := 25.0
-const HP_GROWTH := 1.47  # weapon enhancement (ENH_*) is the exponential power source that keeps act 3 moving
-const GOLD_BASE := 2.0
-const GOLD_GROWTH := 1.3
-const EXP_BASE := 3.0
-const EXP_GROWTH := 1.25
-const LEVEL_EXP_BASE := 80.0
-const LEVEL_EXP_GROWTH := 1.2
-## Level gap EXP penalty, shaped after the TBH table for a level 30 hero (design doc 5.6).
-const STAGE_LEVEL_PER_STAGE := 1.9  # measured with tools/balance.gd: heroes reach stage s around level 1.3-1.9 x s
-const OVER_LEVEL_SAFE := 2  # up to 2 levels above the stage: full EXP
-const OVER_LEVEL_MID := 8.0  # 50% EXP at 8 levels above
-const OVER_LEVEL_SCALE := 1.6
-const UNDER_LEVEL_SAFE := 5  # pushing ahead is punished less
-const UNDER_LEVEL_STEP := 0.05
-const UNDER_LEVEL_MIN := 0.5
-const RUNE_COST_MULT := 5.0
-## Enhancement: per hero, per gear slot. Weapon compounds (the exponential power source), the others add.
-const ENH_WEAPON_MULT := 1.05  # ATK x this per weapon level
-const ENH_GLOVES_APS := 0.02
-const ENH_RING_GOLD := 0.05
-const ENH_COST_BASE := 500.0
-const ENH_COST_GROWTH := 1.35
-const ENH_SAFE_LEVEL := 5  # up to +5 never fails
-const ENH_FAIL_STEP := 0.07  # chance lost per level above that
-const ENH_MIN_CHANCE := 0.3
-const BOSS_TIME_SEC := 30.0
-const CHEST_INTERVAL_SEC := 240.0  # 4 min, design doc 5.3
-const CHEST_CAP := 20
-const OFFLINE_BASE_CAP_SEC := 4 * 3600  # +1h per "hoard" rune level, up to TBH's 8h
-const OFFLINE_VOID_SEC := 30 * 86400  # absent longer = clock tampering, reward 0
-
-const TIERS := ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"]
-const SLOTS := ["weapon", "gloves", "ring"]  # +ATK, +attack speed %, +gold %
-const BAG_CAP := 60
-const DROP_CHANCE := 0.08
-const CHEST_ITEMS := 3
-## Synthesis 9 -> 1, per input tier: [chance +1, chance +2]. The rest fails and returns 1 item of the same tier.
-## Only the last two steps can fail (design doc 5.4). Mythic cannot be synthesized.
-const SYNTH := [[0.95, 0.05], [0.96, 0.04], [0.98, 0.02], [0.80, 0.0025], [0.50, 0.0]]
-const SAFE_SYNTH_TIERS := 3  # auto-synth only touches tiers that cannot fail
-
-## Rune tree. `per` is the effect of one level in the unit shown by `fmt` (0 = on/off rune).
-## Cost of the next level = cost * grow^level. `at` = [column, row] in the tree panel.
-const RUNES := [
-	{"id": "growth", "name": "Khởi đầu", "fmt": "+%d%% ATK", "per": 5, "max": 5, "cost": 50, "grow": 1.6, "req": "", "at": [0, 2]},
-	{"id": "repose", "name": "Nghỉ ngơi", "fmt": "Mở thưởng offline", "per": 0, "max": 1, "cost": 100, "grow": 1.0, "req": "growth", "at": [1, 0]},
-	{"id": "training", "name": "Rèn luyện", "fmt": "+%d%% EXP", "per": 10, "max": 5, "cost": 150, "grow": 1.7, "req": "growth", "at": [1, 1]},
-	{"id": "greed", "name": "Tham lam", "fmt": "+%d%% vàng", "per": 8, "max": 5, "cost": 200, "grow": 1.7, "req": "growth", "at": [1, 2]},
-	{"id": "haste", "name": "Nhanh nhẹn", "fmt": "+%d%% tốc đánh", "per": 4, "max": 5, "cost": 300, "grow": 1.8, "req": "growth", "at": [1, 4]},
-	{"id": "hoard", "name": "Ngủ sâu", "fmt": "+%dh trần offline", "per": 1, "max": 4, "cost": 500, "grow": 2.0, "req": "repose", "at": [2, 0]},
-	{"id": "bag", "name": "Túi lớn", "fmt": "+%d ô túi", "per": 10, "max": 4, "cost": 500, "grow": 1.7, "req": "training", "at": [2, 1]},
-	{"id": "chest_time", "name": "Đồng hồ cát", "fmt": "−%ds chờ rương", "per": 15, "max": 4, "cost": 400, "grow": 1.8, "req": "greed", "at": [2, 2]},
-	{"id": "luck", "name": "May mắn", "fmt": "+%d%% rơi đồ", "per": 2, "max": 5, "cost": 600, "grow": 1.7, "req": "greed", "at": [2, 3]},
-	{"id": "might", "name": "Sức mạnh", "fmt": "+%d%% ATK", "per": 10, "max": 5, "cost": 1000, "grow": 1.8, "req": "haste", "at": [2, 4]},
-	{"id": "alchemy", "name": "Giả kim", "fmt": "+%d%% giá bán", "per": 10, "max": 5, "cost": 800, "grow": 1.7, "req": "bag", "at": [3, 1]},
-	{"id": "chest_cap", "name": "Kho rương", "fmt": "+%d sức chứa rương", "per": 5, "max": 4, "cost": 300, "grow": 1.6, "req": "chest_time", "at": [3, 2]},
-	{"id": "fortune", "name": "Vận may", "fmt": "+%d%% lên phẩm", "per": 3, "max": 5, "cost": 1500, "grow": 1.8, "req": "luck", "at": [3, 3]},
-	{"id": "focus", "name": "Tập trung", "fmt": "+%ds giờ boss", "per": 3, "max": 5, "cost": 800, "grow": 1.6, "req": "might", "at": [3, 4]},
-	{"id": "auto_chest", "name": "Dây cót", "fmt": "Tự mở rương", "per": 0, "max": 1, "cost": 5000, "grow": 1.0, "req": "chest_cap", "at": [4, 2]},
-	{"id": "command", "name": "Chỉ huy", "fmt": "Mở ô đội 2: Ranger", "per": 0, "max": 1, "cost": 300, "grow": 1.0, "req": "growth", "at": [1, 5]},
-	{"id": "command2", "name": "Chỉ huy II", "fmt": "Mở ô đội 3: Sorcerer", "per": 0, "max": 1, "cost": 30000, "grow": 1.0, "req": "command", "at": [2, 5]},  # x5 = 150k, the TBH price
-	# max 0 = no cap: endless gold sinks once the fixed runes are done
-	{"id": "mastery", "name": "Bậc thầy", "fmt": "+%d%% ATK", "per": 5, "max": 0, "cost": 4000, "grow": 1.12, "req": "focus", "at": [4, 4]},
-	{"id": "wisdom", "name": "Minh triết", "fmt": "+%d%% EXP", "per": 2, "max": 0, "cost": 3000, "grow": 1.15, "req": "alchemy", "at": [4, 1]},
-]
-
-## atk/aps are multipliers on the shared base stats. Skills are fixed passives for now.
-const CLASSES := {
-	"knight": {"name": "Knight", "atk": 1.0, "aps": 1.5, "skill": "Đâm xuyên: đòn thứ 5 gây x3"},
-	"ranger": {"name": "Ranger", "atk": 0.7, "aps": 2.2, "skill": "Ngắm bắn: 20% chí mạng x2"},
-	"sorcerer": {"name": "Sorcerer", "atk": 1.3, "aps": 0.9, "skill": "Cầu lửa: mỗi 4 giây gây x4"},
-}
-const PIERCE_EVERY := 5
-const PIERCE_MULT := 3.0
-const CRIT_CHANCE := 0.2
-const CRIT_MULT := 2.0
-const FIREBALL_CD := 4.0
-const FIREBALL_MULT := 4.0
-
-var stage := 1
-var wave := 1
-var wave_kills := 0  # kills inside the current wave
-var max_stage := 1  # highest unlocked stage; the portal can jump to any stage up to here
-var repeat := false  # farm mode: stay on the stage after its boss instead of moving on
-## Slot i of the party. Slot 2 (Ranger) only fights once the "command" rune is bought.
-## `attacks` and `cd` are runtime-only and not saved.
-var heroes := [_new_hero("knight"), _new_hero("ranger"), _new_hero("sorcerer")]
+# --- persistent state ---
 var gold := 0
-var kills := 0
+var stones := [0, 0, 0, 0, 0]  # enhancement stones level 1..5
 var chests := 0
-var chest_ready_at := 0.0  # unix time; chests only drop while the game runs
-var bag := {}  # "slot:tier" -> count. Items carry no random stats, so a count per kind is the whole bag.
-var runes := {}  # id -> level
-var rng := RandomNumberGenerator.new()
+var chest_ready_at := 0.0  # unix time; chests only drop while the game runs (Q2.1 A)
+var pity_chests := 0  # chests opened since the last Immortal (Q7.5 note)
+var owned := ["knight"]
+var heroes := {}  # cls -> {cls, level, xp, skills, equip, outfit}
+var party := ["knight"]  # formation, front to back
+var bag := []  # unique items (Q7.6 B)
+var next_uid := 1
+var runes := {}
+var auto_sell_below := -1  # rarity index; drops at or below are dismantled when the rune is owned
+var diff := 0
+var stage := 1
+var max_stage := [1, 0, 0, 0]  # highest unlocked stage per difficulty, 0 = locked
+var repeat := false
+var first_kills := {}
+var mode := "campaign"  # campaign | zone | tower
+var zone_int := 1
+var zone_max := 1
+var tower_floor := 1
+var tower_best := 0
+var kills := 0
 
-var monster_hp := 0.0
-var monster_max_hp := 0.0
-var boss_time_left := 0.0
-var last_crit := false  # for the UI: did the latest Ranger shot crit
+# --- battle state (not saved) ---
+var wave := 1
+var fighters := []  # one per party slot
+var mobs := []
+var events := []
+var rng := RandomNumberGenerator.new()
+var _uid := 0
+var _stats_cache := {}
 
 
 func _init() -> void:
 	rng.randomize()
-	_spawn()
+	for c in D.CLASS_ORDER:
+		heroes[c] = _new_hero(c)
+	_reset_fighters()
 
 
 static func _new_hero(cls: String) -> Dictionary:
-	return {"cls": cls, "level": 1, "xp": 0, "equipped": {"weapon": -1, "gloves": -1, "ring": -1},
-		"enh": {"weapon": 0, "gloves": 0, "ring": 0},
-		"attacks": 0, "cd": 0.0, "casts": 0, "skill_cd": FIREBALL_CD}
+	var eq := {}
+	for s in D.SLOTS:
+		eq[s] = null
+	return {"cls": cls, "level": 1, "xp": 0, "skills": {}, "equip": eq, "outfit": 0}
 
 
-func party_size() -> int:
-	return 1 + rune_level("command") + rune_level("command2")
+func _emit(e: Dictionary) -> void:
+	events.append(e)
+	if events.size() > 200:
+		events.pop_front()
 
 
-# --- item stats ---
-
-static func sell_value(tier: int) -> int:
-	return int(10 * pow(3, tier))  # 9 inputs always sell for more than 1 output: 90 vs 30
+func _dirty() -> void:
+	_stats_cache.clear()
 
 
-static func item_bonus(slot: String, tier: int) -> float:
-	if tier < 0:
-		return 0.0
-	match slot:
-		"weapon": return 3.0 * pow(3, tier)  # flat ATK
-		"gloves": return 0.05 * (tier + 1)  # attack speed %
-		_: return 0.10 * (tier + 1)  # gold %
-
-
-# --- runes ---
+# =========================================================== runes
 
 static func rune_def(id: String) -> Dictionary:
-	for r in RUNES:
+	for r in D.RUNES:
 		if r.id == id:
 			return r
 	return {}
@@ -158,14 +80,13 @@ func rune_level(id: String) -> int:
 	return runes.get(id, 0)
 
 
-## Total effect of a rune in its display unit (e.g. 15 for "+15% ATK").
-func rv(id: String) -> int:
+func rv(id: String) -> float:
 	return rune_def(id).per * rune_level(id)
 
 
 func rune_cost(id: String) -> int:
 	var r := rune_def(id)
-	return int(r.cost * RUNE_COST_MULT * pow(r.grow, rune_level(id)))
+	return int(r.cost * pow(r.grow, rune_level(id)))
 
 
 func rune_unlocked(id: String) -> bool:
@@ -182,404 +103,1200 @@ func buy_rune(id: String) -> bool:
 		return false
 	gold -= rune_cost(id)
 	runes[id] = rune_level(id) + 1
+	for c in D.CLASS_ORDER:  # Q4.7 A: classes open through runes
+		if D.CLASSES[c].unlock == id and not c in owned:
+			owned.append(c)
+			if party.size() < party_size():
+				party.append(c)
+	while party.size() < party_size() and party.size() < owned.size():
+		for c in owned:
+			if not c in party:
+				party.append(c)
+				break
+	_dirty()
+	_reset_fighters()
 	return true
 
 
-# --- derived stats ---
-
-func hero_atk(i := 0) -> float:
-	var h: Dictionary = heroes[i]
-	var base: float = 5.0 + 2.0 * (h.level - 1) + item_bonus("weapon", h.equipped.weapon)
-	return base * CLASSES[h.cls].atk * pow(ENH_WEAPON_MULT, h.enh.weapon) * (1.0 + (rv("growth") + rv("might") + rv("mastery")) / 100.0)
+func party_size() -> int:
+	return 1 + rune_level("command") + rune_level("command2")
 
 
-func hero_aps(i := 0) -> float:
-	var h: Dictionary = heroes[i]
-	return CLASSES[h.cls].aps * (1.0 + item_bonus("gloves", h.equipped.gloves) + ENH_GLOVES_APS * h.enh.gloves + rv("haste") / 100.0)
+func set_party_slot(i: int, cls: String) -> bool:
+	if i >= party_size() or not cls in owned or i > party.size():
+		return false
+	var j := party.find(cls)
+	if i == party.size():
+		if j >= 0:
+			return false
+		party.append(cls)
+	elif j >= 0:  # swap positions
+		party[j] = party[i]
+		party[i] = cls
+	else:
+		party[i] = cls
+	_reset_fighters()
+	return true
 
 
-## Average damage per second of the active party, skills included.
-func team_dps() -> float:
-	var dps := 0.0
-	for i in party_size():
-		match heroes[i].cls:
-			"knight": dps += hero_atk(i) * hero_aps(i) * (1.0 + (PIERCE_MULT - 1.0) / PIERCE_EVERY)
-			"ranger": dps += hero_atk(i) * hero_aps(i) * (1.0 + CRIT_CHANCE * (CRIT_MULT - 1.0))
-			_: dps += hero_atk(i) * (hero_aps(i) + FIREBALL_MULT / FIREBALL_CD)
-	return dps
-
-
-## Rings on every active hero stack.
-func gold_mult() -> float:
-	var m := 1.0 + rv("greed") / 100.0
-	for i in party_size():
-		m += item_bonus("ring", heroes[i].equipped.ring) + ENH_RING_GOLD * heroes[i].enh.ring
-	return m
-
-
-func chest_interval() -> float:
-	return CHEST_INTERVAL_SEC - rv("chest_time")
-
-
-func chest_cap() -> int:
-	return CHEST_CAP + rv("chest_cap")
-
-
-func bag_cap() -> int:
-	return BAG_CAP + rv("bag")
-
-
-func sell_price(tier: int) -> int:
-	return int(sell_value(tier) * (1.0 + rv("alchemy") / 100.0))
-
-
-func offline_cap() -> float:
-	return OFFLINE_BASE_CAP_SEC + rv("hoard") * 3600
-
-
-func is_boss() -> bool:
-	return wave > WAVES_PER_STAGE
-
+# =========================================================== progression helpers
 
 func act() -> int:
-	return (stage - 1) / STAGES_PER_ACT + 1
+	return (stage - 1) / D.STAGES_PER_ACT + 1
 
 
 func local_stage() -> int:
-	return (stage - 1) % STAGES_PER_ACT + 1
+	return (stage - 1) % D.STAGES_PER_ACT + 1
 
 
-## Waves get crowded deeper into an act: 1 monster at X-1, 7 at X-10.
-func mobs_per_wave() -> int:
-	return 1 + (local_stage() - 1) * 2 / 3
+func stage_level(d := -1, s := -1) -> int:
+	if mode == "zone":
+		return D.DIFFS[zone_diff()].lv[1]
+	if mode == "tower":
+		return 10 + 2 * tower_floor
+	d = diff if d < 0 else d
+	s = stage if s < 0 else s
+	var lv: Array = D.DIFFS[d].lv
+	return roundi(lv[0] + (lv[1] - lv[0]) * (s - 1) / float(D.STAGES - 1))
 
 
-## Stage X-10 ends with the act boss instead of a regular stage boss.
-func is_act_boss() -> bool:
-	return is_boss() and local_stage() == STAGES_PER_ACT
+func waves_in_stage() -> int:
+	return D.WAVES if mode == "campaign" else 5
 
 
-func exp_to_next(i := 0) -> int:
-	return int(LEVEL_EXP_BASE * pow(LEVEL_EXP_GROWTH, heroes[i].level - 1))
+func is_boss_wave() -> bool:
+	return wave > waves_in_stage()
 
 
-func _base_hp(w: int) -> float:
-	return HP_BASE * pow(HP_GROWTH, stage - 1) * (1.0 + 0.1 * (w - 1))
+func is_act_boss_stage() -> bool:
+	return mode != "campaign" or local_stage() == D.STAGES_PER_ACT
 
 
-func _gold_per_kill() -> int:
-	return int(GOLD_BASE * pow(GOLD_GROWTH, stage - 1) * gold_mult())
+func feature_unlocked(name: String) -> bool:
+	if name == "zone":
+		return max_stage[1] > 10
+	if name == "tower":
+		return max_stage[1] > 0
+	return max_stage[0] >= D.UNLOCK_AT.get(name, 0) or max_stage[1] > 0
 
 
-func _exp_per_kill() -> int:
-	return int(EXP_BASE * pow(EXP_GROWTH, stage - 1) * (1.0 + (rv("training") + rv("wisdom")) / 100.0))
+func zone_diff() -> int:
+	var d := 1
+	for i in range(1, 4):
+		if max_stage[i] > 10:
+			d = i
+	return d
 
 
-func _spawn() -> void:
-	if is_boss():
-		monster_max_hp = _base_hp(WAVES_PER_STAGE) * BOSS_HP_MULT * (ACT_BOSS_HP_MULT if is_act_boss() else 1.0)
-		boss_time_left = BOSS_TIME_SEC + rv("focus")
+func go_to(d: int, s: int) -> bool:
+	if d < 0 or d > 3 or s < 1 or s > max_stage[d]:
+		return false
+	mode = "campaign"
+	diff = d
+	stage = s
+	_start_stage()
+	return true
+
+
+func go_zone(intensity: int) -> bool:
+	if not feature_unlocked("zone") or intensity < 1 or intensity > zone_max:
+		return false
+	mode = "zone"
+	zone_int = intensity
+	_start_stage()
+	return true
+
+
+func go_tower() -> bool:
+	if not feature_unlocked("tower"):
+		return false
+	mode = "tower"
+	tower_floor = tower_best + 1
+	_start_stage()
+	return true
+
+
+func _start_stage() -> void:
+	wave = 1
+	mobs.clear()
+	_dirty()
+	_reset_fighters()
+	_emit({"t": "stage"})
+
+
+# =========================================================== hero stats
+
+func exp_to_next(level: int) -> int:
+	return int(D.LEVEL_EXP0 * pow(D.LEVEL_EXP_GROWTH, level - 1))
+
+
+func skill_points(cls: String) -> int:
+	var h: Dictionary = heroes[cls]
+	var spent := 0
+	for v in h.skills.values():
+		spent += v
+	return D.SKILL_POINTS_PER_LEVEL * h.level - spent
+
+
+func points_spent(cls: String) -> int:
+	var n := 0
+	for v in heroes[cls].skills.values():
+		n += v
+	return n
+
+
+func skill_def(cls: String, id: String) -> Dictionary:
+	for s in D.SKILLS[cls]:
+		if s.id == id:
+			return s
+	for p in D.PASSIVES:
+		if p.id == id:
+			return p
+	return {}
+
+
+func can_learn(cls: String, id: String) -> bool:
+	var s := skill_def(cls, id)
+	if s.is_empty() or skill_points(cls) <= 0 or heroes[cls].skills.get(id, 0) >= D.SKILL_MAX:
+		return false
+	return points_spent(cls) >= s.get("req", 0)
+
+
+func learn(cls: String, id: String, n := 1) -> int:
+	var done := 0
+	while done < n and can_learn(cls, id):
+		heroes[cls].skills[id] = heroes[cls].skills.get(id, 0) + 1
+		done += 1
+	if done > 0:
+		_dirty()
+	return done
+
+
+func reset_skills(cls: String) -> void:
+	heroes[cls].skills = {}
+	_dirty()
+
+
+func skill_value(cls: String, id: String) -> float:
+	var pts: int = heroes[cls].skills.get(id, 0)
+	if pts <= 0:
+		return 0.0
+	var s := skill_def(cls, id)
+	return s.base + s.per * (pts - 1)
+
+
+static func enh_bonus(enh: int) -> float:
+	var b := 0.0
+	for i in enh:
+		b += D.ENH_STEP[i]
+	return b
+
+
+static func item_stats(it) -> Dictionary:
+	var out := {}
+	if it == null:
+		return out
+	var k := 1.0 + enh_bonus(it.enh)
+	for st in it.main:
+		out[st] = out.get(st, 0.0) + it.main[st] * k
+	for a in it.affixes:
+		out[a.stat] = out.get(a.stat, 0.0) + a.val
+	return out
+
+
+## Final combat stats of a class, damage buckets per Q5.1 A: add inside a bucket, multiply across buckets.
+func stats(cls: String) -> Dictionary:
+	if _stats_cache.has(cls):
+		return _stats_cache[cls]
+	var c: Dictionary = D.CLASSES[cls]
+	var h: Dictionary = heroes[cls]
+	var lv: int = h.level
+	var add := {}
+	for s in D.SLOTS:
+		var st := item_stats(h.equip[s])
+		for k in st:
+			add[k] = add.get(k, 0.0) + st[k]
+	for p in D.PASSIVES:
+		var pts: int = h.skills.get(p.id, 0)
+		if pts > 0:
+			add[p.stat] = add.get(p.stat, 0.0) + p.per * pts
+	var g := func(k): return add.get(k, 0.0)
+	var rune_atk := (rv("growth") + rv("might") + rv("mastery")) / 100.0
+	var s := {
+		"cls": cls, "dmg": c.dmg, "range": c.range, "level": lv,
+		"hp": (c.hp + c.g_hp * (lv - 1) + g.call("hp")) * (1.0 + g.call("hp_pct") + rv("vitality") / 100.0),
+		"atk": (c.atk + c.g_atk * (lv - 1) + g.call("atk")) * (1.0 + g.call("atk_pct")) * (1.0 + rune_atk),
+		"armor": (c.armor + c.g_armor * (lv - 1) + g.call("armor")) * (1.0 + g.call("armor_pct") + rv("guard") / 100.0),
+		"mres": minf(D.MRES_CAP, c.mres + g.call("mres") - (D.DIFFS[diff].mres_pen if mode == "campaign" else D.DIFFS[zone_diff()].mres_pen)),
+		"aspd": c.aspd * (1.0 + g.call("aspd_pct") + rv("haste") / 100.0),
+		"crit": minf(D.CRIT_CAP, c.crit + g.call("crit")),
+		"critdmg": c.critdmg + g.call("critdmg"),
+		"block": minf(D.BLOCK_CAP, c.get("block", 0.0) + g.call("block")),
+		"dodge": minf(D.DODGE_CAP, c.get("dodge", 0.0)),
+		"dmg_reduce": minf(D.DMG_REDUCE_CAP, g.call("dmg_reduce")),
+		"lifesteal": c.get("lifesteal", 0.0),
+		"skill_dmg": g.call("skill_dmg"),
+		"dmg_boss": g.call("dmg_boss"),
+		"gold": g.call("gold"), "exp": g.call("exp"), "mf": g.call("mf"),
+	}
+	_stats_cache[cls] = s
+	return s
+
+
+func team_gold_mult() -> float:
+	var m := 1.0 + rv("greed") / 100.0
+	for c in party:
+		m += stats(c).gold
+	return m
+
+
+func team_mf() -> float:
+	var m := rv("luck") / 100.0
+	for c in party:
+		m += stats(c).mf
+	return m
+
+
+## Expected damage per second of the party, skills roughly included. Used for offline rewards and the HUD.
+func team_dps() -> float:
+	var dps := 0.0
+	for c in party:
+		var s := stats(c)
+		dps += s.atk * s.aspd * (1.0 + s.crit * (s.critdmg - 1.0)) * (1.0 + 0.35 * (1.0 + s.skill_dmg))
+	return dps
+
+
+# =========================================================== damage (Q6)
+
+## TBH armor: A² / (A² + (14L + 12)(A + 0.4 D)), capped at 75%.
+static func armor_reduction(armor: float, level: int, dmg: float) -> float:
+	if armor <= 0.0:
+		return 0.0
+	var a2 := armor * armor
+	return minf(D.ARMOR_CAP, a2 / (a2 + (14.0 * level + 12.0) * (armor + 0.4 * dmg)))
+
+
+## One hit, following the steps in Q6.A. att/def are stat dictionaries. Returns {dmg, crit, dodged, blocked}.
+func hit(att: Dictionary, def: Dictionary, mult: float, is_skill: bool, level: int, force_crit := false) -> Dictionary:
+	var r := {"dmg": 0, "crit": false, "dodged": false, "blocked": false}
+	if rng.randf() < def.get("dodge", 0.0):
+		r.dodged = true
+		return r
+	var d: float = att.atk * mult * (1.0 + (att.get("skill_dmg", 0.0) if is_skill else 0.0))
+	if force_crit or rng.randf() < att.get("crit", 0.0):
+		d *= att.get("critdmg", 1.5)
+		r.crit = true
+	if def.get("boss", false):
+		d *= 1.0 + att.get("dmg_boss", 0.0)
+	if att.dmg == "magic":
+		d *= 1.0 - clampf(def.get("mres", 0.0), -100.0, D.MRES_CAP) / 100.0
 	else:
-		monster_max_hp = _base_hp(wave)
-	monster_hp = monster_max_hp
+		d *= 1.0 - armor_reduction(def.get("armor", 0.0), level, d)
+	d *= 1.0 - def.get("dmg_reduce", 0.0)
+	if rng.randf() < def.get("block", 0.0):
+		d *= 1.0 - D.BLOCK_POWER
+		r.blocked = true
+	r.dmg = maxi(1, int(d))  # Q6.7 B
+	return r
 
 
-# --- combat ---
+# =========================================================== fighters and buffs
 
-## Advance combat by dt seconds. `now` is unix time, used for chest drops.
+func _reset_fighters() -> void:
+	fighters.clear()
+	for i in party.size():
+		var s := stats(party[i])
+		var cds := {}
+		for sk in D.SKILLS[party[i]]:
+			cds[sk.id] = sk.n * 0.5 if sk.trigger == "cd" else 0.0
+		fighters.append({"cls": party[i], "hp": s.hp, "cd": rng.randf() * 0.5, "attacks": 0, "cds": cds,
+			"buffs": [], "dead_t": 0.0})
+
+
+func fighter_stats(i: int) -> Dictionary:
+	var f: Dictionary = fighters[i]
+	var s: Dictionary = stats(f.cls).duplicate()
+	for b in f.buffs:
+		match b.stat:
+			"atk_pct": s.atk *= 1.0 + b.v
+			"aspd_pct": s.aspd *= 1.0 + b.v
+			"dmg_reduce": s.dmg_reduce = minf(D.DMG_REDUCE_CAP, s.dmg_reduce + b.v)
+			"dodge": s.dodge = minf(D.DODGE_CAP, s.dodge + b.v)
+	var berserk := skill_value(f.cls, "b_blood")
+	if berserk > 0.0:  # stronger the lower the HP
+		s.atk *= 1.0 + berserk * (1.0 - f.hp / s.hp)
+	return s
+
+
+func alive(i: int) -> bool:
+	return fighters[i].hp > 0.0
+
+
+func _alive_heroes() -> Array:
+	var out := []
+	for i in fighters.size():
+		if alive(i):
+			out.append(i)
+	return out
+
+
+func _alive_mobs() -> Array:
+	var out := []
+	for i in mobs.size():
+		if mobs[i].hp > 0.0:
+			out.append(i)
+	return out
+
+
+# =========================================================== monsters
+
+func _wave_rng(w: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()  # Q14.6 A: a stage always rolls the same waves
+	r.seed = hash([mode, diff, stage, zone_int, tower_floor, w])
+	return r
+
+
+func _make_mob(id: String, lv: int, r: RandomNumberGenerator, elite_n: int) -> Dictionary:
+	var m: Dictionary = D.MOBS[id]
+	var w_hp := 1.0 + 0.04 * (wave - 1)
+	var mob := {"uid": _next_uid(), "id": id, "name": m.name, "sprite": m.sprite, "role": m.role, "dmg": m.dmg,
+		"hp": D.MOB_HP0 * pow(D.MOB_HP_GROWTH, lv - 1) * m.hp * w_hp,
+		"atk": D.MOB_ATK0 * pow(D.MOB_ATK_GROWTH, lv - 1) * m.atk,
+		"aspd": m.aspd, "armor": D.MOB_ARMOR_PER_LV * lv * m.armor, "mres": minf(D.MRES_CAP, m.mres + lv * 0.3),
+		"dodge": m.dodge, "boss": false, "act_boss": false, "elite": [], "cd": 0.5 + r.randf(),
+		"gold": 1.0, "loot": false, "regen": 0.0, "thorns": 0.0, "level": lv, "skills": [], "scale": 1.0,
+		"slam_t": D.SLAM_CD, "warn": 0.0, "summon_t": D.SUMMON_CD, "enraged": false, "split": false}
+	if mode == "zone":
+		mob.hp *= 1.0 + D.ZONE_HP_PER_INT * (zone_int - 1)
+		mob.atk *= 1.0 + 0.25 * (zone_int - 1)
+	if elite_n > 0:
+		_make_elite(mob, elite_n, r)
+	mob["max"] = mob.hp
+	return mob
+
+
+func _make_elite(mob: Dictionary, n: int, r: RandomNumberGenerator) -> void:
+	var keys: Array = D.ELITE_AFFIXES.keys()
+	var picked := []
+	var tries := 0
+	while picked.size() < n and tries < 50:
+		tries += 1
+		var k: String = keys[r.randi() % keys.size()]
+		if k in picked:
+			continue
+		var bad: Array = D.ELITE_AFFIXES[k].get("bad", [])
+		if picked.any(func(p): return p in bad):
+			continue
+		picked.append(k)
+	mob.hp *= D.ELITE_HP
+	for k in picked:
+		var a: Dictionary = D.ELITE_AFFIXES[k]
+		mob.hp *= a.get("hp", 1.0)
+		mob.atk *= a.get("atk", 1.0)
+		mob.aspd *= a.get("aspd", 1.0)
+		mob.armor *= a.get("armor", 1.0)
+		mob.dodge = minf(D.DODGE_CAP, mob.dodge + a.get("dodge", 0.0))
+		mob.regen += a.get("regen", 0.0)
+		mob.thorns += a.get("thorns", 0.0)
+		mob.gold *= a.get("gold", 1.0)
+		if a.get("magic", false):
+			mob.dmg = "magic"
+		if a.get("loot", false):
+			mob.loot = true
+		if k == "splitter":
+			mob.split = true
+		if k == "summoner":
+			mob.skills.append("summon")
+	mob.elite = picked
+	# Q14.7 B: generated name, e.g. "Yêu Tinh Hung Hãn"
+	mob.name = "%s %s" % [mob.name, D.ELITE_AFFIXES[picked[0]].name] if picked.size() > 0 else mob.name
+
+
+func _next_uid() -> int:
+	_uid += 1
+	return _uid
+
+
+func _mob_pool() -> Array:
+	if mode == "tower":
+		var all := []
+		for a in D.ACT_MOBS:
+			all.append_array(a)
+		return all
+	var a_i := act() - 1 if mode == "campaign" else (zone_int - 1) % 3
+	var pool := []
+	for id in D.ACT_MOBS[a_i]:
+		if mode != "campaign" or local_stage() >= D.MOBS[id].get("from", 1):
+			pool.append(id)
+	return pool
+
+
+func _spawn_wave() -> void:
+	mobs.clear()
+	var r := _wave_rng(wave)
+	var lv := stage_level()
+	var elite_n := (diff if mode == "campaign" else zone_diff()) + 1
+	var elite_chance := D.ELITE_CHANCE * (2.0 if mode != "campaign" else 1.0)
+	if is_boss_wave():
+		var b := _make_boss(lv, r)
+		mobs.append(b)
+		_emit({"t": "boss", "name": b.name})
+		return
+	var pool := _mob_pool()
+	var n := 2 + (local_stage() - 1) / 3 if mode == "campaign" else 4
+	for i in n:
+		var id: String = pool[r.randi() % pool.size()]
+		mobs.append(_make_mob(id, lv, r, elite_n if r.randf() < elite_chance else 0))
+	_emit({"t": "wave", "n": wave})
+
+
+func _make_boss(lv: int, r: RandomNumberGenerator) -> Dictionary:
+	var act_boss := is_act_boss_stage()
+	var b: Dictionary
+	if act_boss:
+		var a_i := act() - 1 if mode == "campaign" else r.randi() % 3
+		b = _make_mob(D.ACT_MOBS[a_i][0], lv, r, 0)
+		b.name = D.ACT_BOSSES[a_i].name
+		b.sprite = D.ACT_BOSSES[a_i].sprite
+		b.hp *= D.ACT_BOSS_HP
+		b.atk *= D.ACT_BOSS_ATK
+		b.skills = D.BOSS_SKILLS.duplicate()
+		b.act_boss = true
+	else:
+		var pool := _mob_pool()
+		b = _make_mob(pool[0], lv, r, 0)
+		b.name = "Thủ Lĩnh " + b.name
+		b.hp *= D.BOSS_HP
+		b.atk *= D.BOSS_ATK
+		b.skills = [D.BOSS_SKILLS[r.randi() % D.BOSS_SKILLS.size()]]
+		b.scale = 1.6
+	b.boss = true
+	b.aspd *= 0.8
+	b.max = b.hp
+	return b
+
+
+# =========================================================== simulation step
+
+## Advance the battle by dt seconds. `now` is unix time, used for chest drops.
 func step(dt: float, now: float) -> void:
+	_tick_chests(now)
+	if fighters.size() != party.size():
+		_reset_fighters()
+	if _alive_mobs().is_empty():
+		_spawn_wave()
+	_tick_heroes(dt)
+	if _alive_mobs().is_empty():
+		_wave_cleared()
+		return
+	_tick_mobs(dt)
+	if _alive_heroes().is_empty():
+		_wipe()
+
+
+func _tick_chests(now: float) -> void:
 	if chest_ready_at == 0.0:
 		chest_ready_at = now + chest_interval()
 	if now >= chest_ready_at:
 		chests = mini(chests + 1, chest_cap())
 		chest_ready_at = now + chest_interval()
+		_emit({"t": "chest"})
 		if rune_level("auto_chest") > 0:
 			open_chest()
 
-	if is_boss():
-		boss_time_left -= dt
-		if boss_time_left <= 0.0:
-			wave = 1  # failed the boss: replay the stage, like TBH
-			_spawn()
+
+func chest_interval() -> float:
+	return D.CHEST_SEC - rv("chest_time")
+
+
+func chest_cap() -> int:
+	return D.CHEST_CAP
+
+
+func _tick_heroes(dt: float) -> void:
+	for i in fighters.size():
+		var f: Dictionary = fighters[i]
+		if f.hp <= 0.0:
+			f.dead_t -= dt
+			if f.dead_t <= 0.0:
+				f.hp = stats(f.cls).hp * 0.5
+				_emit({"t": "revive", "slot": i})
+			continue
+		for b in f.buffs:
+			b.t -= dt
+		f.buffs = f.buffs.filter(func(b): return b.t > 0.0)
+		var s := fighter_stats(i)
+		for sk in D.SKILLS[f.cls]:
+			if sk.trigger == "cd" and heroes[f.cls].skills.get(sk.id, 0) > 0:
+				f.cds[sk.id] -= dt
+				if f.cds[sk.id] <= 0.0 and _cast(i, sk, s):
+					f.cds[sk.id] = sk.n
+		f.cd -= dt
+		while f.cd <= 0.0:
+			f.cd += 1.0 / s.aspd
+			var targets := _alive_mobs()
+			if targets.is_empty():
+				break
+			f.attacks += 1
+			_hero_hit(i, targets[0], 1.0, false, s)
+			_emit({"t": "attack", "slot": i, "mob": mobs[targets[0]].uid if targets[0] < mobs.size() else -1})
+			for sk in D.SKILLS[f.cls]:
+				if sk.trigger == "hits" and heroes[f.cls].skills.get(sk.id, 0) > 0 and f.attacks % int(sk.n) == 0:
+					_cast(i, sk, s)
+
+
+## Returns false when the skill had nothing to do (e.g. heal with everyone full), so its cooldown waits.
+func _cast(i: int, sk: Dictionary, s: Dictionary) -> bool:
+	var f: Dictionary = fighters[i]
+	var v := skill_value(f.cls, sk.id)
+	var targets := _alive_mobs()
+	match sk.kind:
+		"dmg":
+			if targets.is_empty():
+				return false
+			_hero_hit(i, targets[0], v, true, s)
+			_emit({"t": "skill", "slot": i, "fx": sk.fx, "mob": mobs[targets[0]].uid if targets[0] < mobs.size() else -1})
+		"aoe":
+			if targets.is_empty():
+				return false
+			for m in targets:
+				_hero_hit(i, m, v, true, s)
+			_emit({"t": "skill", "slot": i, "fx": sk.fx, "mob": -1})
+		"multi":
+			if targets.is_empty():
+				return false
+			for k in sk.hits:
+				var live := _alive_mobs()
+				if live.is_empty():
+					break
+				_hero_hit(i, live[rng.randi() % live.size()], v, true, s)
+			_emit({"t": "skill", "slot": i, "fx": sk.fx, "mob": mobs[targets[0]].uid if targets[0] < mobs.size() else -1})
+		"execute":
+			if targets.is_empty():
+				return false
+			var low: int = targets[0]
+			for m in targets:
+				if mobs[m].hp < mobs[low].hp:
+					low = m
+			var uid: int = mobs[low].uid
+			_hero_hit(i, low, v, true, s, true)
+			_emit({"t": "skill", "slot": i, "fx": sk.fx, "mob": uid})
+		"heal":
+			var worst := -1
+			for j in _alive_heroes():
+				var ratio: float = fighters[j].hp / stats(fighters[j].cls).hp
+				if ratio < 0.9 and (worst < 0 or ratio < fighters[worst].hp / stats(fighters[worst].cls).hp):
+					worst = j
+			if worst < 0:
+				return false
+			var mx: float = stats(fighters[worst].cls).hp
+			fighters[worst].hp = minf(mx, fighters[worst].hp + s.atk * v * (1.0 + s.skill_dmg))
+			_emit({"t": "heal", "slot": i, "target": worst, "fx": sk.fx})
+		"revive":
+			for j in fighters.size():
+				if not alive(j):
+					fighters[j].hp = stats(fighters[j].cls).hp * minf(1.0, v)
+					_emit({"t": "heal", "slot": i, "target": j, "fx": sk.fx})
+					return true
+			return false
+		"buff":
+			f.buffs.append({"stat": sk.stat, "v": v, "t": sk.dur})
+			_emit({"t": "buff", "slot": i, "fx": sk.fx})
+	return true
+
+
+func _hero_hit(i: int, m: int, mult: float, is_skill: bool, s: Dictionary, force_crit := false) -> void:
+	if m >= mobs.size() or mobs[m].hp <= 0.0:
+		return
+	var mob: Dictionary = mobs[m]
+	var r := hit(s, mob, mult, is_skill, s.level, force_crit)
+	mob.hp -= r.dmg
+	_emit({"t": "dmg", "mob": mob.uid, "v": r.dmg, "crit": r.crit, "miss": r.dodged})
+	var f: Dictionary = fighters[i]
+	if s.lifesteal > 0.0 and r.dmg > 0:
+		f.hp = minf(stats(f.cls).hp, f.hp + r.dmg * s.lifesteal)
+	if mob.thorns > 0.0 and r.dmg > 0:
+		f.hp -= r.dmg * mob.thorns
+		if f.hp <= 0.0:
+			_hero_died(i)
+	if mob.hp <= 0.0:
+		_mob_died(m)
+
+
+func _tick_mobs(dt: float) -> void:
+	for m in _alive_mobs():
+		var mob: Dictionary = mobs[m]
+		if mob.regen > 0.0:
+			mob.hp = minf(mob.max, mob.hp + mob.max * mob.regen * dt)
+		if "enrage" in mob.skills and not mob.enraged and mob.hp < mob.max * 0.3:
+			mob.enraged = true
+			mob.aspd *= 1.5
+			_emit({"t": "enrage", "mob": mob.uid})
+		if "slam" in mob.skills:
+			if mob.warn > 0.0:
+				mob.warn -= dt
+				if mob.warn <= 0.0:
+					for j in _alive_heroes():
+						_mob_hit(m, j, D.SLAM_MULT)
+					_emit({"t": "slam", "mob": mob.uid})
+			else:
+				mob.slam_t -= dt
+				if mob.slam_t <= 0.0:
+					mob.slam_t = D.SLAM_CD
+					mob.warn = D.SLAM_WARN  # telegraph before the hit
+					_emit({"t": "slam_warn", "mob": mob.uid})
+		if "summon" in mob.skills and mobs.size() < 9:
+			mob.summon_t -= dt
+			if mob.summon_t <= 0.0:
+				mob.summon_t = D.SUMMON_CD
+				var pool := _mob_pool()
+				for k in 2:
+					var add := _make_mob(pool[rng.randi() % pool.size()], mob.level, rng, 0)
+					add.hp *= 0.5
+					add.max = add.hp
+					mobs.append(add)
+				_emit({"t": "summon", "mob": mob.uid})
+		mob.cd -= dt
+		if mob.cd > 0.0:
+			continue
+		mob.cd += 1.0 / mob.aspd
+		var heroes_alive := _alive_heroes()
+		if heroes_alive.is_empty():
 			return
-
-	for i in party_size():
-		var h: Dictionary = heroes[i]
-		h.cd -= dt
-		if h.cls == "sorcerer":
-			h.skill_cd -= dt
-			if h.skill_cd <= 0.0:
-				h.skill_cd += FIREBALL_CD
-				h.casts += 1
-				monster_hp -= hero_atk(i) * FIREBALL_MULT
-				if monster_hp <= 0.0:
-					_on_kill()
-					return
-		while h.cd <= 0.0:
-			h.cd += 1.0 / hero_aps(i)
-			h.attacks += 1
-			monster_hp -= _hit_damage(i)
-			if monster_hp <= 0.0:
-				_on_kill()
-				return
+		match mob.role:
+			"melee": _mob_hit(m, heroes_alive[0], 1.0)  # Q6.2 A: the front hero takes melee hits
+			"ranged": _mob_hit(m, heroes_alive[rng.randi() % heroes_alive.size()], 1.0)
+			"pierce":
+				for j in heroes_alive:
+					_mob_hit(m, j, 0.6)
+		_emit({"t": "mob_attack", "mob": mob.uid, "role": mob.role})
 
 
-func _hit_damage(i: int) -> float:
-	var h: Dictionary = heroes[i]
-	var dmg := hero_atk(i)
-	if h.cls == "knight" and h.attacks % PIERCE_EVERY == 0:
-		dmg *= PIERCE_MULT
-	elif h.cls == "ranger":
-		last_crit = rng.randf() < CRIT_CHANCE
-		if last_crit:
-			dmg *= CRIT_MULT
-	return dmg
+func _mob_hit(m: int, j: int, mult: float) -> void:
+	if not alive(j):
+		return
+	var mob: Dictionary = mobs[m]
+	var r := hit(mob, fighter_stats(j), mult, false, mob.level)
+	fighters[j].hp -= r.dmg
+	_emit({"t": "hurt", "slot": j, "v": r.dmg, "miss": r.dodged, "block": r.blocked})
+	if fighters[j].hp <= 0.0:
+		_hero_died(j)
 
 
-func _on_kill() -> void:
-	var boss := is_boss()
-	var mult := 5 if boss else 1
+func _hero_died(j: int) -> void:
+	fighters[j].hp = 0.0
+	fighters[j].dead_t = D.REVIVE_SEC
+	_emit({"t": "die", "slot": j})
+
+
+func _wipe() -> void:
+	# Q3.3 C: the run is lost only when the whole party is down
+	_emit({"t": "wipe"})
+	wave = 1
+	mobs.clear()
+	_reset_fighters()
+
+
+func _mob_died(m: int) -> void:
+	var mob: Dictionary = mobs[m]
 	kills += 1
-	gold += _gold_per_kill() * mult
-	for i in party_size():  # every active hero gets full exp, like a TBH party
-		_gain_exp(i, int(_exp_per_kill() * mult * hero_exp_mult(i)))
-	if boss:
-		for i in 2:
-			add_item(SLOTS[rng.randi() % SLOTS.size()], _roll_tier(1))
-		wave = 1
-		max_stage = maxi(max_stage, mini(stage + 1, MAX_STAGE))
-		if not repeat:
-			stage = mini(stage + 1, MAX_STAGE)
-	else:
-		if rng.randf() < DROP_CHANCE + rv("luck") / 100.0:
-			add_item(SLOTS[rng.randi() % SLOTS.size()], _roll_tier(0))
-		wave_kills += 1
-		if wave_kills >= mobs_per_wave():
-			wave_kills = 0
-			wave += 1
-	_spawn()
+	var lv: int = mob.level
+	var g: float = D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * mob.gold * team_gold_mult()
+	var xp := D.EXP0 * pow(D.EXP_GROWTH, lv - 1)
+	var drop_chance := 0.03 * (1.0 + team_mf())
+	if mob.boss:
+		g *= 8.0
+		xp *= 6.0
+		drop_chance = 0.0
+	elif mob.elite.size() > 0:
+		g *= 3.0
+		xp *= 3.0
+		drop_chance = 0.3
+	if mob.loot:
+		drop_chance = 1.0
+	gold += int(g)
+	_gain_exp_party(xp)
+	if rng.randf() < drop_chance:
+		_drop_item(0)
+	if mob.split:
+		for k in 2:
+			var child := _make_mob(mob.id, lv, rng, 0)
+			child.hp *= 0.4
+			child.max = child.hp
+			mobs.append(child)
+	_emit({"t": "mob_die", "mob": mob.uid, "boss": mob.boss, "gold": int(g)})
 
 
-func _gain_exp(i: int, amount: int) -> void:
-	var h: Dictionary = heroes[i]
-	h.xp += amount
-	while h.xp >= exp_to_next(i):
-		h.xp -= exp_to_next(i)
-		h.level += 1
+func _gain_exp_party(xp: float) -> void:
+	for c in party:
+		var h: Dictionary = heroes[c]
+		if h.level >= D.LEVEL_CAP:
+			continue
+		var gain: float = xp * (1.0 + (rv("training") + rv("wisdom")) / 100.0 + stats(c).exp) * hero_exp_mult(c)
+		h.xp += int(gain)
+		while h.level < D.LEVEL_CAP and h.xp >= exp_to_next(h.level):
+			h.xp -= exp_to_next(h.level)
+			h.level += 1
+			_dirty()
+			_emit({"t": "levelup", "cls": c, "level": h.level})
 
 
-## Each step up has a chance that grows with stage. Act 1 drops stop at Epic, act 2 at Legendary, act 3 at Mythic.
-func _roll_tier(floor_tier: int) -> int:
-	var tier := floor_tier
-	while tier < 2 + act() and rng.randf() < 0.2 + 0.015 * stage + rv("fortune") / 100.0:
-		tier += 1
-	return tier
+## Q5.4 A: level gap penalty shaped after the TBH table (hero 30: −4 94%, −8 50%, −10 23%).
+static func exp_mult_for_gap(gap: int) -> float:
+	if gap > 2:
+		return 1.0 / (1.0 + exp((gap - 8.0) / 1.6))
+	if gap < -5:
+		return maxf(0.5, 1.0 - 0.05 * (-gap - 5))
+	return 1.0
+
+
+func hero_exp_mult(cls: String) -> float:
+	return exp_mult_for_gap(heroes[cls].level - stage_level())
+
+
+func _wave_cleared() -> void:
+	if is_boss_wave():
+		_stage_cleared()
+		return
+	wave += 1
+
+
+func _stage_cleared() -> void:
+	var key := "%s:%d:%d:%d" % [mode, diff, stage if mode == "campaign" else (zone_int if mode == "zone" else tower_floor), 0]
+	var first := not first_kills.has(key)
+	first_kills[key] = true
+	var lv := stage_level()
+	var bonus := D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * 20.0 * team_gold_mult()
+	if first:
+		bonus *= D.FIRST_KILL_GOLD  # Q13.4 note
+	gold += int(bonus)
+	var n := 2 if is_act_boss_stage() else 1
+	for k in n:
+		_drop_item(1 if first else 0)
+	stones[mini(4, lv / 20)] += 1 + (1 if first else 0)
+	_emit({"t": "clear", "first": first, "gold": int(bonus)})
+	wave = 1
+	match mode:
+		"campaign":
+			if stage < D.STAGES:
+				max_stage[diff] = maxi(max_stage[diff], stage + 1)
+				if not repeat:
+					stage += 1
+			elif diff < 3 and max_stage[diff + 1] == 0:
+				max_stage[diff + 1] = 1  # beating 3-10 opens the next difficulty (TBH)
+				_emit({"t": "diff_unlock", "d": diff + 1})
+		"zone":
+			zone_max = maxi(zone_max, mini(D.ZONE_INTENSITY_MAX, zone_int + 1))
+			if not repeat and zone_int < zone_max:
+				zone_int += 1
+		"tower":
+			tower_best = maxi(tower_best, tower_floor)
+			tower_floor += 1
+	_dirty()
+	_reset_fighters()
+
+
+# =========================================================== items
+
+func bag_cap() -> int:
+	return D.BAG_CAP + int(rv("bag"))
+
+
+func roll_rarity(floor_r := 0) -> int:
+	var a := act() - 1 if mode == "campaign" else 2
+	var d := diff if mode == "campaign" else zone_diff()
+	var boost := 1.0 + 0.15 * a + 0.25 * d + rv("fortune") / 100.0
+	if mode == "zone":
+		boost += D.ZONE_LOOT_PER_INT * zone_int
+	var weights := []
+	var total := 0.0
+	for i in D.RARITIES.size():
+		var w: float = D.RARITIES[i].w * (boost if i >= 2 else 1.0) if i >= floor_r else 0.0
+		weights.append(w)
+		total += w
+	var x := rng.randf() * total
+	for i in weights.size():
+		x -= weights[i]
+		if x <= 0.0:
+			return i
+	return D.RARITIES.size() - 1
+
+
+func make_item(slot: String, rarity: int, kind := "") -> Dictionary:
+	if kind == "":
+		if slot == "weapon":
+			kind = D.CLASSES[_kind_class()].weapon
+		elif slot == "armor":
+			kind = D.CLASSES[_kind_class()].armor_kind
+	var it := {"uid": next_uid, "slot": slot, "kind": kind, "rarity": rarity, "main": {}, "affixes": [],
+		"enh": 0, "pity": 0.0, "locked": false}
+	next_uid += 1
+	var mult: float = D.RARITIES[rarity].mult * rng.randf_range(0.9, 1.1)
+	for st in D.MAIN_STATS[slot]:
+		it.main[st] = D.MAIN_STATS[slot][st] * mult
+	for i in D.RARITIES[rarity].affixes:
+		it.affixes.append(_roll_affix(it))
+	return it
+
+
+## Weapons and armor lean toward classes the player owns, so most drops are wearable.
+func _kind_class() -> String:
+	if rng.randf() < 0.75:
+		return owned[rng.randi() % owned.size()]
+	return D.CLASS_ORDER[rng.randi() % D.CLASS_ORDER.size()]
+
+
+func _roll_affix(it: Dictionary) -> Dictionary:
+	var taken: Array = it.affixes.map(func(a): return a.stat)
+	var keys := D.AFFIXES.keys().filter(func(k): return not k in taken)
+	var stat: String = keys[rng.randi() % keys.size()]
+	var qmax: int = D.RARITIES[it.rarity].qmax
+	var q := 1
+	while q < qmax and rng.randf() < 0.55:  # low quality is common, 9–10 is rare
+		q += 1
+	return {"stat": stat, "q": q, "val": affix_value(stat, q), "locked": false}
+
+
+static func affix_value(stat: String, q: int) -> float:
+	var a: Dictionary = D.AFFIXES[stat]
+	return a.lo + (a.hi - a.lo) * (q - 1) / 9.0
+
+
+func _drop_item(floor_r: int) -> Dictionary:
+	var it := make_item(D.SLOTS[rng.randi() % D.SLOTS.size()], roll_rarity(floor_r))
+	return _receive(it)
+
+
+## Into the bag, or dismantled at once when the bag is full or auto-sell catches it.
+func _receive(it: Dictionary) -> Dictionary:
+	if bag.size() >= bag_cap() or (rune_level("auto_sell") > 0 and it.rarity <= auto_sell_below):
+		_dismantle_rewards(it)
+		_emit({"t": "auto_sell", "rarity": it.rarity})
+		return it
+	bag.append(it)
+	_emit({"t": "drop", "rarity": it.rarity})
+	return it
 
 
 func open_chest() -> bool:
 	if chests <= 0:
 		return false
 	chests -= 1
-	gold += 20 * stage
-	for i in CHEST_ITEMS:
-		add_item(SLOTS[rng.randi() % SLOTS.size()], _roll_tier(0))
+	pity_chests += 1
+	gold += int(D.GOLD0 * pow(D.GOLD_GROWTH, stage_level() - 1) * 15.0 * team_gold_mult())
+	stones[0] += 1 + rng.randi() % 2
+	var got_immortal := false
+	for k in D.CHEST_ITEMS:
+		var r := roll_rarity()
+		if k == 0 and pity_chests >= D.IMMORTAL_PITY:
+			r = D.RARITIES.size() - 1
+		if r == D.RARITIES.size() - 1:
+			got_immortal = true
+		_receive(make_item(D.SLOTS[rng.randi() % D.SLOTS.size()], r))
+	if got_immortal:
+		pity_chests = 0
+	_emit({"t": "open_chest"})
 	return true
 
 
-# --- bag ---
+func find_item(uid: int) -> Dictionary:
+	for it in bag:
+		if it.uid == uid:
+			return it
+	for c in heroes:
+		for s in D.SLOTS:
+			var it = heroes[c].equip[s]
+			if it != null and it.uid == uid:
+				return it
+	return {}
 
-static func key(slot: String, tier: int) -> String:
-	return "%s:%d" % [slot, tier]
+
+func can_wear(cls: String, it: Dictionary) -> bool:
+	match it.slot:
+		"weapon": return it.kind == D.CLASSES[cls].weapon
+		"armor": return it.kind == D.CLASSES[cls].armor_kind
+	return true
 
 
-func count(slot: String, tier: int) -> int:
-	return bag.get(key(slot, tier), 0)
+## Move a bag item onto a hero; the previous item goes back to the bag.
+func equip(cls: String, uid: int) -> bool:
+	var idx := -1
+	for i in bag.size():
+		if bag[i].uid == uid:
+			idx = i
+	if idx < 0 or not can_wear(cls, bag[idx]):
+		return false
+	var it: Dictionary = bag[idx]
+	bag.remove_at(idx)
+	var old = heroes[cls].equip[it.slot]
+	if old != null:
+		bag.append(old)
+	heroes[cls].equip[it.slot] = it
+	_dirty()
+	return true
 
 
-func bag_total() -> int:
+func unequip(cls: String, slot: String) -> bool:
+	var it = heroes[cls].equip[slot]
+	if it == null or bag.size() >= bag_cap():
+		return false
+	heroes[cls].equip[slot] = null
+	bag.append(it)
+	_dirty()
+	return true
+
+
+static func item_gold(it: Dictionary) -> int:
+	return int(15.0 * pow(3.0, it.rarity) * (1.0 + 0.3 * it.enh))
+
+
+## Q8.4 B: gold + enhancement stones by rarity.
+static func item_stones(it: Dictionary) -> Array:
+	var st := [0, 0, 0, 0, 0]
+	match int(it.rarity):
+		0, 1: st[0] = 1
+		2: st[0] = 2
+		3: st[1] = 1
+		4: st[2] = 1
+		5: st[3] = 1
+	return st
+
+
+func _dismantle_rewards(it: Dictionary) -> void:
+	gold += item_gold(it)
+	var st := item_stones(it)
+	for i in 5:
+		stones[i] += st[i]
+
+
+func dismantle(uid: int) -> bool:
+	for i in bag.size():
+		if bag[i].uid == uid:
+			if bag[i].locked:
+				return false
+			_dismantle_rewards(bag[i])
+			bag.remove_at(i)
+			return true
+	return false
+
+
+## Dismantle every unlocked bag item at or below a rarity.
+func dismantle_below(rarity: int) -> int:
 	var n := 0
-	for c in bag.values():
-		n += c
+	for it in bag.duplicate():
+		if not it.locked and it.rarity <= rarity and dismantle(it.uid):
+			n += 1
 	return n
 
 
-## Full bag: the item is sold on the spot instead of lost.
-func add_item(slot: String, tier: int) -> bool:
-	if bag_total() >= bag_cap():
-		gold += sell_price(tier)
-		return false
-	bag[key(slot, tier)] = count(slot, tier) + 1
-	return true
+func sort_bag() -> void:
+	bag.sort_custom(func(a, b): return a.rarity > b.rarity or (a.rarity == b.rarity and D.SLOTS.find(a.slot) < D.SLOTS.find(b.slot)))
 
 
-func _take(slot: String, tier: int, n: int) -> void:
-	var left := count(slot, tier) - n
-	if left > 0:
-		bag[key(slot, tier)] = left
-	else:
-		bag.erase(key(slot, tier))
+# =========================================================== enhancement (Q9)
+
+func enh_cost(it: Dictionary) -> int:
+	return int(D.ENH_COST0 * pow(D.ENH_COST_GROWTH, it.enh) * (1.0 - rv("smith") / 100.0))
 
 
-func sell(slot: String, tier: int, n: int) -> int:
-	n = mini(n, count(slot, tier))
-	_take(slot, tier, n)
-	var g := n * sell_price(tier)
-	gold += g
-	return g
+func protect_cost(it: Dictionary) -> int:
+	var k: int = it.enh + 1
+	if k < 7:
+		return 0
+	return int(1.25 * enh_cost(it) * pow(1.15, k - 6))
 
 
-## Swap the bag item into hero `i`'s slot; the old one goes back to the bag.
-func equip(slot: String, tier: int, i := 0) -> bool:
-	if count(slot, tier) <= 0:
-		return false
-	var eq: Dictionary = heroes[i].equipped
-	_take(slot, tier, 1)
-	if eq[slot] >= 0:
-		bag[key(slot, eq[slot])] = count(slot, eq[slot]) + 1
-	eq[slot] = tier
-	return true
+func enh_chance(it: Dictionary, stone_lv: int, n_stones: int) -> float:
+	return minf(1.0, D.ENH_CHANCE[it.enh] + it.pity + D.STONE_BONUS[stone_lv - 1] * n_stones)
 
 
-## 9 same slot + same tier -> 1. Returns {} if not possible, else {"tier": result, "kind": "up"|"great"|"fail"}.
-func synth(slot: String, tier: int) -> Dictionary:
-	if tier >= SYNTH.size() or count(slot, tier) < 9:
+static func enh_floor(enh: int) -> int:
+	var f := 0
+	for x in D.ENH_FLOORS:
+		if enh >= x:
+			f = x
+	return f
+
+
+## One try. Needs 1–3 stones of one level (Q9.4 B). Returns {} if not possible, else {ok, enh, dropped}.
+func enhance(uid: int, stone_lv: int, n_stones: int, protect: bool) -> Dictionary:
+	var it := find_item(uid)
+	if it.is_empty() or it.enh >= D.ENH_MAX or n_stones < 1 or n_stones > D.STONES_PER_TRY:
 		return {}
-	_take(slot, tier, 9)
-	var r := rng.randf()
-	var res := {"tier": tier, "kind": "fail"}
-	if r < SYNTH[tier][1]:
-		res = {"tier": mini(tier + 2, TIERS.size() - 1), "kind": "great"}
-	elif r < SYNTH[tier][0] + SYNTH[tier][1]:
-		res = {"tier": tier + 1, "kind": "up"}
-	bag[key(slot, res.tier)] = count(slot, res.tier) + 1
+	if stone_lv < 1 or stone_lv > 5 or stones[stone_lv - 1] < n_stones:
+		return {}
+	var cost := enh_cost(it) + (protect_cost(it) if protect else 0)
+	if gold < cost:
+		return {}
+	gold -= cost
+	stones[stone_lv - 1] -= n_stones
+	var chance := enh_chance(it, stone_lv, n_stones)
+	var res := {"ok": false, "enh": it.enh, "dropped": false}
+	if rng.randf() < chance:
+		it.enh += 1
+		it.pity = 0.0
+		res.ok = true
+	else:
+		it.pity += D.ENH_PITY
+		if it.enh + 1 >= 7 and not protect:
+			var lower := maxi(it.enh - 1, enh_floor(it.enh))
+			res.dropped = lower < it.enh
+			it.enh = lower
+	res.enh = it.enh
+	_dirty()
 	return res
 
 
-## Synthesize every safe group until none has 9 left. Returns how many synths ran.
-func auto_synth() -> int:
-	var n := 0
-	for tier in SAFE_SYNTH_TIERS:
-		for slot in SLOTS:
-			while count(slot, tier) >= 9:
-				synth(slot, tier)
-				n += 1
-	return n
+# =========================================================== reroll and lock (Q11)
+
+func reroll_cost(it: Dictionary, locked: int) -> int:
+	return int(D.REROLL_COST0 * pow(D.REROLL_GROWTH, it.rarity) * pow(2.0, locked))
 
 
-# --- offline and save ---
+func locked_count(it: Dictionary) -> int:
+	return it.affixes.filter(func(a): return a.locked).size()
 
-## Gold and xp for `elapsed` seconds away. Needs the "repose" rune, like TBH. No chests or items offline.
-# ponytail: kill rate estimated from a mid-wave monster, ignores boss walls; simulate if offline balance matters
+
+func toggle_lock(uid: int, idx: int) -> bool:
+	var it := find_item(uid)
+	if it.is_empty() or idx < 0 or idx >= it.affixes.size():
+		return false
+	it.affixes[idx].locked = not it.affixes[idx].locked
+	return true
+
+
+## Reroll every unlocked line, or only line `only` (the others count as locked for the price).
+func reroll(uid: int, only := -1) -> bool:
+	var it := find_item(uid)
+	if it.is_empty() or it.affixes.is_empty():
+		return false
+	var locked: int = locked_count(it) if only < 0 else it.affixes.size() - 1
+	if locked >= it.affixes.size():
+		return false
+	var cost := reroll_cost(it, locked)
+	if gold < cost:
+		return false
+	gold -= cost
+	for i in it.affixes.size():
+		var a: Dictionary = it.affixes[i]
+		if (only >= 0 and i != only) or (only < 0 and a.locked):
+			continue
+		var others := it.duplicate()  # roll against the other lines only, so this line may keep or change its stat
+		others.affixes = it.affixes.filter(func(x): return x != a)
+		it.affixes[i] = _roll_affix(others)
+	_dirty()
+	return true
+
+
+# =========================================================== offline (Q2.2 B, Q2.3 B)
+
+func offline_cap() -> float:
+	return (D.OFFLINE_BASE_H + rv("hoard")) * 3600.0
+
+
+## Gold and exp for `elapsed` seconds away. No chests offline.
+# ponytail: kill rate from team DPS vs the current stage's average mob HP, ignores deaths and bosses
 func offline_reward(elapsed: float) -> Dictionary:
-	if rune_level("repose") == 0 or elapsed <= 0.0 or elapsed > OFFLINE_VOID_SEC:
+	if elapsed <= 0.0 or elapsed > D.OFFLINE_VOID_SEC:
 		return {"gold": 0, "xp": 0}
 	var t := minf(elapsed, offline_cap())
-	var kills_per_sec := minf(team_dps() / _base_hp(5), 1.0)
-	return {
-		"gold": int(t * kills_per_sec * _gold_per_kill()),
-		"xp": int(t * kills_per_sec * _exp_per_kill()),  # per active hero
-	}
+	var lv := stage_level()
+	var mob_hp := D.MOB_HP0 * pow(D.MOB_HP_GROWTH, lv - 1) * 1.1
+	var kps := minf(team_dps() / mob_hp, 2.0) * 0.5
+	return {"gold": int(t * kps * D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * team_gold_mult()),
+		"xp": int(t * kps * D.EXP0 * pow(D.EXP_GROWTH, lv - 1))}
 
 
 func apply_offline(elapsed: float) -> Dictionary:
 	var r := offline_reward(elapsed)
 	gold += r.gold
-	for i in party_size():
-		_gain_exp(i, int(r.xp * hero_exp_mult(i)))  # TBH 1.3.0: the penalty applies offline too
+	_gain_exp_party(r.xp)
 	return r
 
 
+# =========================================================== save
+
 func to_dict() -> Dictionary:
-	var hs := []
-	for h in heroes:
-		hs.append({"cls": h.cls, "level": h.level, "xp": h.xp, "equipped": h.equipped, "enh": h.enh})
-	return {
-		"stage": stage, "max_stage": max_stage, "repeat": repeat, "wave": mini(wave, WAVES_PER_STAGE), "heroes": hs,
-		"gold": gold, "kills": kills, "chests": chests, "bag": bag, "runes": runes,
-	}
+	return {"v": SAVE_VERSION, "gold": gold, "stones": stones, "chests": chests, "pity_chests": pity_chests,
+		"owned": owned, "heroes": heroes, "party": party, "bag": bag, "next_uid": next_uid, "runes": runes,
+		"auto_sell_below": auto_sell_below, "diff": diff, "stage": stage, "max_stage": max_stage, "repeat": repeat,
+		"first_kills": first_kills, "zone_int": zone_int, "zone_max": zone_max, "tower_best": tower_best, "kills": kills}
 
 
-func from_dict(d: Dictionary) -> void:
-	stage = clampi(int(d.get("stage", 1)), 1, MAX_STAGE)
-	max_stage = clampi(maxi(int(d.get("max_stage", 1)), stage), 1, MAX_STAGE)  # old saves: the current stage was the furthest
-	repeat = bool(d.get("repeat", false))
-	wave = int(d.get("wave", 1))
+static func _fix_item(it) -> Variant:
+	if typeof(it) != TYPE_DICTIONARY:
+		return null
+	for k in ["uid", "rarity", "enh"]:
+		it[k] = int(it.get(k, 0))
+	it["pity"] = float(it.get("pity", 0.0))
+	it["locked"] = bool(it.get("locked", false))
+	if not it.get("slot", "") in D.SLOTS:
+		return null
+	it["rarity"] = clampi(it.rarity, 0, D.RARITIES.size() - 1)
+	it["enh"] = clampi(it.enh, 0, D.ENH_MAX)
+	for a in it.get("affixes", []):
+		a["q"] = clampi(int(a.q), 1, 10)
+		a["locked"] = bool(a.get("locked", false))
+	return it
+
+
+## Returns false for saves from the old prototype (version 1): they start fresh.
+func from_dict(d: Dictionary) -> bool:
+	if int(d.get("v", 1)) != SAVE_VERSION:
+		return false
 	gold = int(d.get("gold", 0))
-	kills = int(d.get("kills", 0))
+	var st: Array = d.get("stones", [])
+	for i in 5:
+		stones[i] = int(st[i]) if i < st.size() else 0
 	chests = int(d.get("chests", 0))
-	bag = {}
-	for k in d.get("bag", {}):
-		bag[k] = int(d.bag[k])  # JSON turns ints into floats
-	# Saves before the party existed kept level/xp/equipped at the top level: that was the Knight.
-	var saved: Array = d.get("heroes", [{"level": d.get("level", 1), "xp": d.get("xp", 0), "equipped": d.get("equipped", {})}])
-	for i in heroes.size():
-		var src: Dictionary = saved[i] if i < saved.size() else {}
-		var h: Dictionary = heroes[i]
-		h.level = maxi(1, int(src.get("level", 1)))
-		h.xp = int(src.get("xp", 0))
-		for s in SLOTS:
-			h.equipped[s] = int(src.get("equipped", {}).get(s, -1))
-			h.enh[s] = maxi(0, int(src.get("enh", {}).get(s, 0)))
+	pity_chests = int(d.get("pity_chests", 0))
 	runes = {}
-	for r in RUNES:  # only known ids, clamped to max: a hand-edited save cannot overshoot
+	for r in D.RUNES:  # only known ids, clamped: a hand-edited save cannot overshoot
 		var lv := clampi(int(d.get("runes", {}).get(r.id, 0)), 0, r.max if r.max > 0 else 100000)
 		if lv > 0:
 			runes[r.id] = lv
-	_spawn()
-
-
-# --- enhancement ---
-
-func enh_cost(i: int, slot: String) -> int:
-	return int(ENH_COST_BASE * pow(ENH_COST_GROWTH, heroes[i].enh[slot]))
-
-
-## Chance that the next level succeeds.
-static func enh_chance(level: int) -> float:
-	return clampf(1.0 - maxi(0, level - ENH_SAFE_LEVEL + 1) * ENH_FAIL_STEP, ENH_MIN_CHANCE, 1.0)
-
-
-## Pays the cost and rolls. Returns {} if gold is short, else {"ok": bool, "level": new level}.
-## A failure only costs gold; the level never drops.
-func enhance(i: int, slot: String) -> Dictionary:
-	var cost := enh_cost(i, slot)
-	if gold < cost:
-		return {}
-	gold -= cost
-	var eh: Dictionary = heroes[i].enh
-	var ok := rng.randf() < enh_chance(eh[slot])
-	if ok:
-		eh[slot] += 1
-	return {"ok": ok, "level": eh[slot]}
-
-
-# --- portal ---
-
-## Jump to an unlocked stage, starting from its first wave. Returns false if it is still locked.
-func go_to_stage(s: int) -> bool:
-	if s < 1 or s > max_stage:
-		return false
-	stage = s
-	wave = 1
-	wave_kills = 0
-	_spawn()
+	owned = ["knight"]
+	for c in d.get("owned", []):
+		if c in D.CLASSES and not c in owned and (D.CLASSES[c].unlock == "" or rune_level(D.CLASSES[c].unlock) > 0):
+			owned.append(c)
+	for c in D.CLASS_ORDER:
+		var src: Dictionary = d.get("heroes", {}).get(c, {})
+		var h := _new_hero(c)
+		h.level = clampi(int(src.get("level", 1)), 1, D.LEVEL_CAP)
+		h.xp = int(src.get("xp", 0))
+		h.outfit = int(src.get("outfit", 0)) % 2
+		for k in src.get("skills", {}):
+			h.skills[k] = clampi(int(src.skills[k]), 0, D.SKILL_MAX)
+		for s in D.SLOTS:
+			h.equip[s] = _fix_item(src.get("equip", {}).get(s))
+		heroes[c] = h
+	party = []
+	for c in d.get("party", ["knight"]):
+		if c in owned and not c in party and party.size() < party_size():
+			party.append(c)
+	if party.is_empty():
+		party = ["knight"]
+	bag = []
+	for it in d.get("bag", []):
+		var f = _fix_item(it)
+		if f != null:
+			bag.append(f)
+	next_uid = int(d.get("next_uid", 1))
+	auto_sell_below = int(d.get("auto_sell_below", -1))
+	var ms: Array = d.get("max_stage", [1, 0, 0, 0])
+	for i in 4:
+		max_stage[i] = clampi(int(ms[i]) if i < ms.size() else 0, 0, D.STAGES)
+	max_stage[0] = maxi(1, max_stage[0])
+	diff = clampi(int(d.get("diff", 0)), 0, 3)
+	if max_stage[diff] == 0:
+		diff = 0
+	stage = clampi(int(d.get("stage", 1)), 1, max_stage[diff])
+	repeat = bool(d.get("repeat", false))
+	first_kills = d.get("first_kills", {})
+	zone_max = clampi(int(d.get("zone_max", 1)), 1, D.ZONE_INTENSITY_MAX)
+	zone_int = clampi(int(d.get("zone_int", 1)), 1, zone_max)
+	tower_best = int(d.get("tower_best", 0))
+	kills = int(d.get("kills", 0))
+	mode = "campaign"
+	_start_stage()
 	return true
-
-
-# --- level gap ---
-
-func stage_level(s := -1) -> int:
-	return maxi(1, roundi(STAGE_LEVEL_PER_STAGE * (stage if s < 0 else s)))
-
-
-## EXP multiplier for a hero `diff` levels above (positive) or below (negative) the stage.
-static func exp_mult(diff: int) -> float:
-	if diff > OVER_LEVEL_SAFE:
-		return 1.0 / (1.0 + exp((diff - OVER_LEVEL_MID) / OVER_LEVEL_SCALE))
-	if diff < -UNDER_LEVEL_SAFE:
-		return maxf(UNDER_LEVEL_MIN, 1.0 - UNDER_LEVEL_STEP * (-diff - UNDER_LEVEL_SAFE))
-	return 1.0
-
-
-func hero_exp_mult(i: int) -> float:
-	return exp_mult(heroes[i].level - stage_level())

@@ -2,28 +2,29 @@
 
 Game idle RPG chạy trong một dải trong suốt ngay trên thanh taskbar (trên macOS là ngay trên Dock). Đội hero tự đánh quái, rơi đồ, mở rương theo giờ thực, trong lúc bạn làm việc khác. Lấy cảm hứng từ thể loại "bottom-of-your-screen" và *TBH: Task Bar Hero*, nhưng toàn bộ tên, hình và âm thanh đều là của dự án này.
 
-Làm bằng **Godot 4.7** (GDScript). Không có asset ngoài: sprite vẽ bằng lưới ký tự, âm thanh và nhạc tổng hợp bằng code.
+Làm bằng **Godot 4.7** (GDScript). Thiết kế theo các quyết định trong [docs/core-rpg-quyet-dinh.docx](docs/core-rpg-quyet-dinh.docx). Hình nhân vật và quái từ [0x72 DungeonTileset II](https://0x72.itch.io/dungeontileset-ii) (CC0), hiệu ứng skill từ [pixelfx](https://github.com/patch-gg/pixelfx) (MIT), âm thanh và nhạc tạo bằng code.
 
-![Trận đánh act 3](docs/battle.png)
-![Boss act Tử xà ở màn 3-10](docs/boss.png)
+![Trận đánh](docs/battle.png)
+![Hiệu ứng chí mạng](docs/boss.png)
 
-| Túi đồ | Cây rune |
-| --- | --- |
-| ![Túi đồ](docs/bag.png) | ![Cây rune](docs/rune.png) |
+| Túi đồ | Đội và cây skill | Lò rèn |
+| --- | --- | --- |
+| ![Túi đồ](docs/bag.png) | ![Đội](docs/hero.png) | ![Lò rèn](docs/forge.png) |
 
 ## Tính năng
 
-- **Cửa sổ taskbar:** dải trong suốt, không viền, luôn nằm trên cùng. Chỉ HUD và panel bắt chuột; vùng còn lại bấm xuyên tới ứng dụng phía sau. Tự canh theo vùng làm việc của màn hình và scale Retina/DPI.
-- **3 act × 10 màn:** Đồng cỏ, Sa mạc, Rừng tối. Số quái mỗi sóng tăng dần trong act, boss màn và boss act riêng (Vua xương, Sâu cát, Tử xà).
-- **Đội 3 class:** Knight (đòn thứ 5 gây ×3), Ranger (20% chí mạng ×2), Sorcerer (cầu lửa ×4 mỗi 4 giây). Ô đội 2 và 3 mở bằng rune.
-- **Đồ và ghép:** 6 phẩm từ Common đến Mythic, 3 loại (Kiếm, Găng, Nhẫn), ghép 9→1 có tỉ lệ thành công/đại thành công/thất bại, bán, tự ghép các bậc an toàn.
-- **Rương theo giờ thực:** chỉ rơi khi game đang mở; tắt game thì chỉ nhận vàng và EXP offline (trần 4–8 giờ).
-- **Cây rune 19 node:** chỉ số, rương, túi, offline, mở ô đội, và 2 rune không giới hạn cấp để tiêu vàng lâu dài.
-- **Lò rèn:** cường hóa từng ô đồ của từng hero; Kiếm nhân ATK theo cấp số nhân. Từ +6 có thể thất bại nhưng không tụt cấp.
-- **Portal:** quay lại bất kỳ màn đã mở; chế độ Lặp màn để cày.
-- **Phạt EXP lệch level:** hero cao level hơn màn bị giảm EXP theo đường cong khớp bảng của TBH.
-- **Âm thanh và nhạc:** 13 hiệu ứng và 3 bản nhạc nền theo act, tạo bằng code. Nút Bật/Nhỏ/Tắt cho âm thanh và Bật/Tắt cho nhạc.
-- **Save:** JSON trong `user://save.json`, tự lưu mỗi 30 giây; save cũ được tự chuyển sang định dạng mới.
+- **Cửa sổ taskbar:** dải trong suốt, không viền, luôn nằm trên cùng. Chỉ HUD và panel bắt chuột; vùng còn lại bấm xuyên tới ứng dụng phía sau. Nền đồi núi sinh từ seed của màn, chỉnh được độ đậm.
+- **Chiến đấu:** hero có máu, gục rồi hồi sinh sau 8 giây; cả sóng quái (2–5 con) đứng trên sân; cả đội gục thì đánh lại từ sóng 1. Quái cận chiến đánh hero đứng đầu, quái tầm xa bắn ngẫu nhiên, Pháp Sư Xương bắn xuyên cả đội. Sát thương vật lý bị giáp chặn (công thức TBH), phép bị kháng phép chặn.
+- **6 class:** Hiệp Sĩ, Cung Thủ, Pháp Sư, Tu Sĩ, Cuồng Chiến, Sát Thủ, mở bằng rune; tự xếp đội 3 ô. Mỗi class 3 skill chủ động (theo số đòn hoặc hồi chiêu) và 6 nội tại, 5 điểm mỗi level, tối đa 25 điểm mỗi skill, tẩy điểm miễn phí.
+- **3 act × 10 màn × 4 độ khó** (Thường, Ác Mộng, Địa Ngục, Đày Đọa) theo dải level màn của TBH, độ khó cao trừ kháng phép. Boss màn và boss act có kỹ năng: đập đất có báo trước, gọi lính, nổi giận dưới 30% máu. Quái tinh anh có 1–4 thuộc tính ngẫu nhiên và tên sinh tự động.
+- **Trang bị 6 ô** (vũ khí và giáp theo class; mũ, giày, găng, trang sức dùng chung), 6 phẩm từ Common tới Immortal, dòng phụ 1–4 dòng với điểm chất lượng 1–10 tô màu kiểu MU. Túi từng món riêng, khóa món, sắp xếp, phân rã ra vàng và đá cường hóa, tự phân rã theo ngưỡng (rune). Bảo hiểm: 1000 rương chưa ra Immortal thì chắc chắn ra một món.
+- **Lò rèn:** cường hóa từng món tới +15 bằng vàng và 1–3 đá (cấp 1–5); từ +7 thất bại lùi 1 cấp nhưng không qua mốc +6/+9/+12; pity +3% mỗi lần trượt; tùy chọn bảo vệ bằng vàng. Tẩy dòng phụ, khóa dòng (giá ×2 mỗi dòng khóa) hoặc tẩy riêng một dòng.
+- **Hình theo trang bị:** vũ khí tô màu theo phẩm, vòng sáng dưới chân theo phẩm giáp, vũ khí phát sáng từ +7; 2 trang phục mỗi class.
+- **Cây rune 24 node:** mở class và ô đội, chỉ số, túi, rương, tự mở rương, tự phân rã, rèn rẻ hơn, offline, và 2 rune không giới hạn cấp.
+- **Endgame:** Vùng Hỗn Mang cường độ 1–20 và Tháp vô tận. Lần đầu hạ boss nhận thưởng gấp 5.
+- **Rương theo giờ thực** chỉ rơi khi game mở; thưởng offline có ngay từ đầu, trần 8 giờ (12 giờ với rune).
+- **Âm thanh và nhạc** tạo bằng code; nút Bật/Nhỏ/Tắt.
+- **Save:** JSON trong `user://save.json`, tự lưu mỗi 30 giây. Save của bản prototype cũ không dùng được nữa; game bắt đầu lại từ đầu.
 
 ## Chạy game
 
@@ -41,7 +42,7 @@ Trên macOS, nếu Godot nằm trong `/Applications`:
 
 Hoặc mở `game/project.godot` trong Godot Editor rồi bấm Run. Cửa sổ trong suốt chỉ hiện đúng khi chạy game, không hiện trong editor.
 
-**Điều khiển:** bấm dòng màn/sóng để mở Portal; các nút Túi, Rune, Rèn mở panel tương ứng; nút rương mở rương; nút loa và nốt nhạc bật tắt âm thanh; nút × lưu và thoát.
+**Điều khiển:** bấm dòng màn/sóng để mở Portal; các nút Túi, Đội, Rèn, Rune mở panel tương ứng (mở dần theo tiến độ); nút Rương mở rương; ⚙ là cài đặt âm thanh, nhạc, độ đậm nền; × lưu và thoát.
 
 ## Build bản Windows
 
@@ -58,37 +59,40 @@ Kết quả là một file `.exe` duy nhất (khoảng 109 MB), đã nhúng sẵ
 
 | Lệnh | Việc |
 | --- | --- |
-| `godot --headless --path game --script res://test_sim.gd` | Chạy toàn bộ test. **Chỉ tính là qua khi in ra dòng bắt đầu bằng `OK`** (Godot trả exit 0 cả khi script lỗi parse). |
-| `godot --headless --path game --script res://tools/balance.gd -- 48` | Bot chơi 48 giờ (mất vài giây), in tiến độ mỗi giờ và thời điểm tới từng màn. Dùng để chỉnh cân bằng. |
-| `godot --path game --script res://tools/screenshot.gd -- out.png [bag\|rune\|forge\|portal] [stage=24] [wave=11] [fire]` | Render game ở một trạng thái bất kỳ ra PNG, không đụng tới save. |
+| `game/tools/run_tests.sh game` | Chạy toàn bộ test; in `PASS` hoặc `FAIL`. Đừng chạy `test_sim.gd` trực tiếp rồi tin exit code: Godot vẫn chạy tiếp và trả 0 khi `assert` thất bại hay script lỗi parse. |
+| `godot --headless --path game --script res://tools/balance.gd -- 168 [seed]` | Bot chơi 168 giờ (khoảng 3 phút), in tiến độ mỗi giờ và thời điểm tới từng màn. Dùng để chỉnh số trong `data.gd`. |
+| `godot --path game --script res://tools/screenshot.gd -- out.png [bag\|hero\|forge\|rune\|portal\|settings] [stage=24] [diff=1] [boss] [t=3]` | Render game với một save mẫu ra PNG, không đụng tới save thật. |
 
 ## Cấu trúc
 
 ```
 game/
   project.godot        cấu hình cửa sổ trong suốt, renderer Compatibility
-  main.tscn, main.gd   cửa sổ, HUD, panel, vẽ, input, lưu/đọc save
-  sim.gd               toàn bộ luật chơi và số cân bằng, không vẽ gì
-  art.gd               sprite dạng lưới ký tự + bảng màu Sweetie 16
-  sfx.gd               hiệu ứng âm thanh tổng hợp bằng code
-  music.gd             nhạc nền theo act, tổng hợp bằng code
+  data.gd              mọi số thiết kế: class, skill, quái, đồ, rune, độ khó, hằng số cân bằng
+  sim.gd               luật chơi (chiến đấu, đồ, rèn, tẩy dòng, rune, tiến trình, save), không vẽ gì
+  main.tscn, main.gd   cửa sổ, chiến trường, HUD, hệ nút, sự kiện -> hiệu ứng và âm thanh
+  panels.gd            các panel: Túi, Đội, Rèn, Rune, Portal, Cài đặt
+  gfx.gd               tải frame 0x72 và phát sprite sheet pixelfx
+  art.gd               icon dạng lưới ký tự
+  sfx.gd, music.gd     âm thanh và nhạc tạo bằng code
+  art/0x72/            hình nhân vật, quái, vũ khí (CC0)
+  fx/                  sprite sheet hiệu ứng từ pixelfx (MIT)
   test_sim.gd          test
-  tools/               bot cân bằng, công cụ chụp ảnh
-  art/                 nơi đặt PNG thay thế sprite (xem art/README.md)
-docs/                  ảnh minh họa cho README
-tbh-chi-tiet.md        nghiên cứu chi tiết về TBH (nguồn tham khảo)
+  tools/               run_tests.sh, bot cân bằng, công cụ chụp ảnh
+docs/                  ảnh minh họa, file quyết định thiết kế, review
+tbh-chi-tiet.md        nghiên cứu chi tiết về TBH
 thiet-ke-game-tuong-tu.md  tài liệu thiết kế ban đầu
 GUIDELINES.md          quy ước làm việc với code
 ```
 
 ## Nhịp chơi hiện tại
 
-Theo bot cân bằng (chơi chăm, mỗi phút ghé một lần): act 1 khoảng 40 phút, vào act 3 khoảng giờ thứ 5, tới 3-7 khoảng giờ 17, 3-9 khoảng giờ 45. Các hằng số nằm ở đầu `game/sim.gd`.
+Theo bot (mỗi phút ghé một lần, không dùng Vùng Hỗn Mang và tẩy dòng): hết Thường sau khoảng 30 phút, hết Ác Mộng sau khoảng 7 giờ, vào Địa Ngục ngày 3 rồi chững lại ở Địa Ngục 3-7 tới hết tuần. Cần chỉnh tiếp để đạt mục tiêu 2–4 tuần cho cả 4 độ khó.
 
 ## Bản quyền nội dung
 
-- Sprite: vẽ riêng cho dự án; bảng màu Sweetie 16 của GrafxKid (CC0).
-- Âm thanh, nhạc: tạo bằng code trong dự án.
-- Quái act 3 lấy từ thần thoại dân gian châu Âu (troll, basilisk, pixie, nhện khổng lồ, hồn ma), không dùng tên hay thiết kế riêng của Harry Potter hay của TBH.
+- Nhân vật, quái, vũ khí: 0x72 DungeonTileset II (CC0). Hiệu ứng: pixelfx (MIT, giấy phép ở `game/fx/LICENSE-pixelfx.txt`). Chi tiết ở `game/art/README.md`.
+- Icon và âm thanh, nhạc: của dự án.
+- Tên bậc phẩm “Immortal” trùng một bậc của TBH (đã chọn trong file quyết định); nên đổi trước khi phát hành.
 
 Repo chưa có file LICENSE.

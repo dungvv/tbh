@@ -4,16 +4,16 @@ Quy ước khi sửa code trong `game/`. Mục tiêu: luật chơi dễ cân b�
 
 ## 1. Kiến trúc: luật chơi tách khỏi phần vẽ
 
-- `sim.gd` chứa **toàn bộ** luật chơi và số liệu. Nó không vẽ, không phát tiếng, không đọc input, không gọi `DisplayServer`.
-- `main.gd` chỉ đọc trạng thái từ `sim`, vẽ, nhận click rồi gọi hàm của `sim`.
-- Âm thanh phát ra bằng cách so sánh trạng thái `sim` trước và sau mỗi `step()` (`_snapshot()` / `_play_events()` trong `main.gd`). Đừng gọi âm thanh từ trong `sim.gd`.
+- `data.gd` chứa mọi số thiết kế; `sim.gd` chứa **toàn bộ** luật chơi. Nó không vẽ, không phát tiếng, không đọc input, không gọi `DisplayServer`.
+- `main.gd` và `panels.gd` chỉ đọc trạng thái từ `sim`, vẽ, nhận click rồi gọi hàm của `sim`. `sim` báo chuyện xảy ra qua mảng `events`; giao diện đọc nó để phát hiệu ứng và âm thanh.
+- Đừng gọi âm thanh hay hiệu ứng từ trong `sim.gd`; hãy thêm một event.
 - Thưởng offline dùng chung công thức với lúc chơi (`team_dps()`), nên mọi thay đổi về sát thương phải đi qua `team_dps()`. Test có kiểm tra `team_dps()` khớp với sát thương đo thực tế trong 40 giây.
 
 Nhờ tách như vậy, bot cân bằng và test chạy được ở chế độ `--headless`, nhanh hơn chơi thật hàng nghìn lần.
 
 ## 2. Số cân bằng
 
-- Mọi hằng số cân bằng đặt ở **đầu `sim.gd`**, có comment nói đơn vị. Không rải số ma thuật trong logic.
+- Mọi hằng số cân bằng đặt trong **`data.gd`**, có comment nói đơn vị. Không rải số ma thuật trong logic.
 - Rune nằm trong bảng `RUNES`, class trong `CLASSES`. Thêm rune hay class là thêm một dòng dữ liệu, không thêm nhánh `if` mới khi tránh được.
 - Sau khi đổi số, **chạy bot** và ghi lại kết quả trong commit message:
 
@@ -27,9 +27,9 @@ godot --headless --path game --script res://tools/balance.gd -- 48
 ## 3. Test
 
 - Test nằm trong `test_sim.gd` (một hàm `_init` dài, chạy từ trên xuống).
-- **Test chỉ qua khi in ra dòng bắt đầu bằng `OK`.** Godot trả exit code 0 cả khi script lỗi parse, nên đừng tin exit code.
+- **Chạy test bằng `tools/run_tests.sh .`.** Godot trả exit code 0 và chạy tiếp cả khi `assert` thất bại hay script lỗi parse, nên script này chỉ báo PASS khi có dòng `OK` và không có `SCRIPT ERROR`.
 - Mỗi logic không tầm thường (nhánh, vòng lặp, xác suất, tiền, save) cần một assert. Logic xác suất: cố định `rng.seed`, chạy vài nghìn lần, so với tỉ lệ kỳ vọng kèm sai số.
-- Vì cả file là một hàm, tên biến cục bộ không được trùng nhau. Khi thêm khối test mới, dùng tiền tố riêng (`mu_`, `pt`, …).
+- Mỗi nhóm test là một hàm `test_*` riêng, gọi trong `_init`.
 - Đổi định dạng save thì thêm test cho **save cũ**: `from_dict()` phải đọc được save thiếu trường mới mà không lỗi.
 
 ## 4. Save
@@ -41,7 +41,7 @@ godot --headless --path game --script res://tools/balance.gd -- 48
 
 ## 5. Sprite
 
-- Sprite là lưới ký tự trong `art.gd`, mỗi ký tự là một pixel, `.` là trong suốt. Màu phải có trong `PALETTE`.
+- Nhân vật và quái dùng 0x72 trong `art/0x72/`; hiệu ứng skill dùng sheet pixelfx trong `fx/` (xem `art/README.md`). Icon nhỏ là lưới ký tự trong `art.gd`, mỗi ký tự một pixel, màu phải có trong `PALETTE`.
 - Mọi hàng của một sprite phải dài bằng nhau. Test có kiểm tra điều này và báo đúng hàng sai.
 - Nhân vật và quái quay mặt: hero nhìn sang phải, quái nhìn sang trái.
 - Quái và hero dùng 2 frame (`_a`, `_b`); hero có thêm frame tấn công.
