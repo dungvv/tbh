@@ -18,10 +18,11 @@ Nhờ tách như vậy, bot cân bằng và test chạy được ở chế độ
 - Sau khi đổi số, **chạy bot** và ghi lại kết quả trong commit message:
 
 ```bash
-godot --headless --path game --script res://tools/balance.gd -- 48
+godot --headless --path game --script res://tools/balance.gd -- 504
 ```
 
-- Mục tiêu nhịp chơi hiện tại: act 1 khoảng 30–50 phút, act 2 vài giờ, act 3 kéo dài nhiều ngày nhưng không đứng yên hoàn toàn.
+- Mục tiêu nhịp chơi (Q1.4 B, 2–4 tuần): hết Thường sau 30–50 phút, hết Ác Mộng trong ngày đầu, hết Địa Ngục trong tuần đầu, hết Đày Đọa sau 2–3 tuần. Bot phải tiến đều, không đứng yên nhiều ngày ở một màn.
+- Đường cong quái gãy ở `MOB_KNEE_LV` (cuối Ác Mộng, khi hero chạm trần level). Sau đó sức mạnh chỉ còn đến từ đồ, cường hóa và rune, nên máu, công và vàng của quái tăng chậm hơn hẳn (`*_GROWTH2`). Mọi chỗ cần chỉ số quái theo level gọi `mob_hp()`, `mob_atk()`, `mob_gold()`, `mob_exp()` trong `sim.gd`.
 - Nếu cố ý chấp nhận một giới hạn (ví dụ công thức ước lượng gần đúng), ghi comment bắt đầu bằng `ponytail:`, nói rõ giới hạn và cách nâng cấp khi cần.
 
 ## 3. Test

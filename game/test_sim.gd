@@ -58,6 +58,23 @@ func test_progress() -> void:
 	# difficulty and stage levels follow TBH ranges
 	assert(s.stage_level(0, 1) == 1 and s.stage_level(0, 30) == 32 and s.stage_level(3, 30) == 95)
 	assert(not s.go_to(1, 1) and s.go_to(0, 1))
+	# monster curves bend at MOB_KNEE_LV: past it each level adds the slower *_GROWTH2
+	var k := D.MOB_KNEE_LV
+	assert(is_equal_approx(Sim.mob_hp(k + 1) / Sim.mob_hp(k), D.MOB_HP_GROWTH2))
+	assert(is_equal_approx(Sim.mob_hp(k) / Sim.mob_hp(k - 1), D.MOB_HP_GROWTH))
+	assert(is_equal_approx(Sim.mob_atk(k + 1) / Sim.mob_atk(k), D.MOB_ATK_GROWTH2))
+	assert(is_equal_approx(Sim.mob_gold(1), D.GOLD0))
+	# elite affixes weaken when stacked: a 4-affix elite stays below the full product of its multipliers
+	var r := RandomNumberGenerator.new()
+	for seed in 50:
+		r.seed = seed
+		var e := s._make_mob("orc_warrior", 80, r, 4)
+		var full := Sim.mob_hp(80) * D.MOBS.orc_warrior.hp * D.ELITE_HP
+		for ak in e.elite:
+			full *= D.ELITE_AFFIXES[ak].get("hp", 1.0)
+		assert(e.elite.size() == 4 and e.max <= full * (1.0 + 0.04 * (s.wave - 1)) + 0.01)
+		if "tough" in e.elite:
+			assert(e.max < full, "tough at 4 affixes is weaker than ×2")
 
 
 func test_damage() -> void:
@@ -93,6 +110,7 @@ func test_party_and_runes() -> void:
 	assert(s.buy_rune("command") and s.party_size() == 2 and s.party == ["knight", "ranger"], "new slot auto-filled")
 	assert(s.set_party_slot(0, "ranger") and s.party == ["ranger", "knight"], "swap order")
 	assert(s.buy_rune("unlock_cleric") and s.buy_rune("command2") and s.party.size() == 3)
+	s.gold = 1_000_000_000
 	var c0 := s.rune_cost("mastery")
 	s.runes["haste"] = 1
 	for i in 20:
@@ -177,6 +195,8 @@ func test_enhance() -> void:
 	assert(s.enhance(it.uid, 1, 0, false).is_empty(), "needs at least one stone")
 	s.stones[0] = 0
 	assert(s.enhance(it.uid, 1, 1, false).is_empty(), "no stones of that level")
+	var low := s.make_item("weapon", 0, "sword")
+	assert(s.enh_cost(it) > s.enh_cost(low), "higher rarity costs more to enhance (late gold sink)")
 	s.stones[0] = 999
 	assert(s.enhance(it.uid, 1, 1, false).ok, "+1 never fails")
 	# failing from +7 up drops a level but never below the floors +6 / +9 / +12

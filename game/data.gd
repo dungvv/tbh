@@ -25,12 +25,16 @@ const UNLOCK_AT := {"rune": 2, "forge": 3, "hero": 4, "portal": 10, "reroll": 11
 
 # --- balance knobs (tuned with tools/balance.gd) ---
 const MOB_HP0 := 24.0
-const MOB_HP_GROWTH := 1.095  # per stage level
+const MOB_HP_GROWTH := 1.095  # per stage level, up to MOB_KNEE_LV
+const MOB_KNEE_LV := 52  # end of Nightmare: heroes hit the level cap around here
+const MOB_HP_GROWTH2 := 1.055  # per level after the knee
 const MOB_ATK0 := 3.0
 const MOB_ATK_GROWTH := 1.075
+const MOB_ATK_GROWTH2 := 1.01
 const MOB_ARMOR_PER_LV := 1.5
 const GOLD0 := 2.0
 const GOLD_GROWTH := 1.065
+const GOLD_GROWTH2 := 1.03
 const EXP0 := 3.0
 const EXP_GROWTH := 1.075
 const LEVEL_EXP0 := 80.0  # Master: EXP needed = 80 × 1.2^(level−1)
@@ -41,6 +45,9 @@ const ACT_BOSS_HP := 4.8
 const ACT_BOSS_ATK := 3.0
 const ELITE_CHANCE := 0.08
 const ELITE_HP := 2.5
+## Strength of each elite affix when a monster has 1..4 of them: the multipliers stack, so a 4-affix elite
+## at full strength outlasts the act boss (bot: 95% of Torment wipes). 1 = as listed in ELITE_AFFIXES.
+const ELITE_AFFIX_POWER := [1.0, 0.75, 0.55, 0.4]
 const FIRST_KILL_GOLD := 5.0  # Q13.4 note: the first boss kill pays much more
 
 # --- classes (Q4.2 C: 6 classes; Q4.10/4.11 tables) ---
@@ -223,7 +230,7 @@ const ENH_CHANCE := [1.0, 0.92, 0.84, 0.76, 0.68, 0.60, 0.50, 0.40, 0.35, 0.25, 
 const ENH_FLOORS := [6, 9, 12]
 const ENH_PITY := 0.03
 const ENH_COST0 := 500.0
-const ENH_COST_GROWTH := 1.35
+const ENH_COST_GROWTH := 1.5  # per level; the cost is also × the rarity multiplier, so high gear is the late gold sink
 ## Bonus to the main stat per level reached: +1..+5 5%, +6..+8 6%, +9..+10 7%, +11..+15 8% (Q9.7 B).
 const ENH_STEP := [0.05, 0.05, 0.05, 0.05, 0.05, 0.06, 0.06, 0.06, 0.07, 0.07, 0.08, 0.08, 0.08, 0.08, 0.08]
 const STONE_BONUS := [0.02, 0.04, 0.07, 0.11, 0.16]  # chance added per stone of level 1..5
@@ -246,7 +253,7 @@ const ZONE_INTENSITY_MAX := 20
 const ZONE_HP_PER_INT := 0.6
 const ZONE_LOOT_PER_INT := 0.08
 
-# --- runes (Q12.1 B rewrite; max 0 = no cap) ---
+# --- runes (Q12.1 B rewrite; max 0 = no cap, then cost × (1 + level)^grow instead of cost × grow^level) ---
 const RUNES := [
 	{"id": "growth", "name": "Khởi Đầu", "fmt": "+%d%% ATK", "per": 5, "max": 5, "cost": 60, "grow": 1.6, "req": "", "at": [0, 3]},
 	{"id": "vitality", "name": "Sinh Lực", "fmt": "+%d%% Máu", "per": 6, "max": 5, "cost": 80, "grow": 1.6, "req": "growth", "at": [1, 2]},
@@ -270,6 +277,7 @@ const RUNES := [
 	{"id": "might", "name": "Sức Mạnh", "fmt": "+%d%% ATK", "per": 10, "max": 5, "cost": 1000, "grow": 1.8, "req": "vitality", "at": [2, 3]},
 	{"id": "guard", "name": "Hộ Vệ", "fmt": "+%d%% giáp", "per": 8, "max": 5, "cost": 1000, "grow": 1.8, "req": "might", "at": [3, 3]},
 	{"id": "haste", "name": "Nhanh Nhẹn", "fmt": "+%d%% tốc đánh", "per": 4, "max": 5, "cost": 1200, "grow": 1.8, "req": "might", "at": [4, 3]},
-	{"id": "mastery", "name": "Bậc Thầy", "fmt": "+%d%% ATK", "per": 5, "max": 0, "cost": 20000, "grow": 1.12, "req": "haste", "at": [5, 3]},
-	{"id": "wisdom", "name": "Minh Triết", "fmt": "+%d%% EXP", "per": 2, "max": 0, "cost": 15000, "grow": 1.15, "req": "smith", "at": [5, 2]},
+	{"id": "mastery", "name": "Bậc Thầy", "fmt": "+%d%% ATK", "per": 5, "max": 0, "cost": 20000, "grow": 2.0, "req": "haste", "at": [5, 3]},
+	{"id": "bulwark", "name": "Thành Lũy", "fmt": "+%d%% Máu và giáp", "per": 5, "max": 0, "cost": 20000, "grow": 2.0, "req": "mastery", "at": [6, 3]},
+	{"id": "wisdom", "name": "Minh Triết", "fmt": "+%d%% EXP", "per": 2, "max": 0, "cost": 15000, "grow": 2.0, "req": "smith", "at": [5, 2]},
 ]

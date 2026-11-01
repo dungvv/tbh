@@ -16,11 +16,11 @@ Làm bằng **Godot 4.7** (GDScript). Thiết kế theo các quyết định tro
 - **Cửa sổ taskbar:** dải trong suốt, không viền, luôn nằm trên cùng. Chỉ HUD và panel bắt chuột; vùng còn lại bấm xuyên tới ứng dụng phía sau. Nền đồi núi sinh từ seed của màn, chỉnh được độ đậm.
 - **Chiến đấu:** hero có máu, gục rồi hồi sinh sau 8 giây; cả sóng quái (2–5 con) đứng trên sân; cả đội gục thì đánh lại từ sóng 1. Quái cận chiến đánh hero đứng đầu, quái tầm xa bắn ngẫu nhiên, Pháp Sư Xương bắn xuyên cả đội. Sát thương vật lý bị giáp chặn (công thức TBH), phép bị kháng phép chặn.
 - **6 class:** Hiệp Sĩ, Cung Thủ, Pháp Sư, Tu Sĩ, Cuồng Chiến, Sát Thủ, mở bằng rune; tự xếp đội 3 ô. Mỗi class 3 skill chủ động (theo số đòn hoặc hồi chiêu) và 6 nội tại, 5 điểm mỗi level, tối đa 25 điểm mỗi skill, tẩy điểm miễn phí.
-- **3 act × 10 màn × 4 độ khó** (Thường, Ác Mộng, Địa Ngục, Đày Đọa) theo dải level màn của TBH, độ khó cao trừ kháng phép. Boss màn và boss act có kỹ năng: đập đất có báo trước, gọi lính, nổi giận dưới 30% máu. Quái tinh anh có 1–4 thuộc tính ngẫu nhiên và tên sinh tự động.
+- **3 act × 10 màn × 4 độ khó** (Thường, Ác Mộng, Địa Ngục, Đày Đọa) theo dải level màn của TBH, độ khó cao trừ kháng phép. Boss màn và boss act có kỹ năng: đập đất có báo trước, gọi lính, nổi giận dưới 30% máu. Quái tinh anh có 1–4 thuộc tính ngẫu nhiên và tên sinh tự động; con càng nhiều thuộc tính thì mỗi thuộc tính càng yếu đi, để tinh anh 4 thuộc tính không mạnh hơn boss.
 - **Trang bị 6 ô** (vũ khí và giáp theo class; mũ, giày, găng, trang sức dùng chung), 6 phẩm từ Common tới Immortal, dòng phụ 1–4 dòng với điểm chất lượng 1–10 tô màu kiểu MU. Túi từng món riêng, khóa món, sắp xếp, phân rã ra vàng và đá cường hóa, tự phân rã theo ngưỡng (rune). Bảo hiểm: 1000 rương chưa ra Immortal thì chắc chắn ra một món.
 - **Lò rèn:** cường hóa từng món tới +15 bằng vàng và 1–3 đá (cấp 1–5); từ +7 thất bại lùi 1 cấp nhưng không qua mốc +6/+9/+12; pity +3% mỗi lần trượt; tùy chọn bảo vệ bằng vàng. Tẩy dòng phụ, khóa dòng (giá ×2 mỗi dòng khóa) hoặc tẩy riêng một dòng.
 - **Hình theo trang bị:** vũ khí tô màu theo phẩm, vòng sáng dưới chân theo phẩm giáp, vũ khí phát sáng từ +7; 2 trang phục mỗi class.
-- **Cây rune 24 node:** mở class và ô đội, chỉ số, túi, rương, tự mở rương, tự phân rã, rèn rẻ hơn, offline, và 2 rune không giới hạn cấp.
+- **Cây rune 25 node:** mở class và ô đội, chỉ số, túi, rương, tự mở rương, tự phân rã, rèn rẻ hơn, offline, và 3 rune không giới hạn cấp (ATK, Máu + giáp, EXP) với giá tăng theo đa thức để vàng cuối game vẫn đổi được ra sức mạnh.
 - **Endgame:** Vùng Hỗn Mang cường độ 1–20 và Tháp vô tận. Lần đầu hạ boss nhận thưởng gấp 5.
 - **Rương theo giờ thực** chỉ rơi khi game mở; thưởng offline có ngay từ đầu, trần 8 giờ (12 giờ với rune).
 - **Âm thanh và nhạc** tạo bằng code; nút Bật/Nhỏ/Tắt.
@@ -60,7 +60,7 @@ Kết quả là một file `.exe` duy nhất (khoảng 109 MB), đã nhúng sẵ
 | Lệnh | Việc |
 | --- | --- |
 | `game/tools/run_tests.sh game` | Chạy toàn bộ test; in `PASS` hoặc `FAIL`. Đừng chạy `test_sim.gd` trực tiếp rồi tin exit code: Godot vẫn chạy tiếp và trả 0 khi `assert` thất bại hay script lỗi parse. |
-| `godot --headless --path game --script res://tools/balance.gd -- 168 [seed]` | Bot chơi 168 giờ (khoảng 3 phút), in tiến độ mỗi giờ và thời điểm tới từng màn. Dùng để chỉnh số trong `data.gd`. |
+| `godot --headless --path game --script res://tools/balance.gd -- 504 [seed]` | Bot chơi 3 tuần (khoảng 10 phút), in tiến độ mỗi giờ, thời điểm tới từng màn và hết từng độ khó (`doneN`), máu boss khi cả đội gục, và quái còn đứng khi gục ở Đày Đọa. Dùng để chỉnh số trong `data.gd`. |
 | `godot --path game --script res://tools/screenshot.gd -- out.png [bag\|hero\|forge\|rune\|portal\|settings] [stage=24] [diff=1] [boss] [t=3]` | Render game với một save mẫu ra PNG, không đụng tới save thật. |
 
 ## Cấu trúc
@@ -87,7 +87,7 @@ GUIDELINES.md          quy ước làm việc với code
 
 ## Nhịp chơi hiện tại
 
-Theo bot (mỗi phút ghé một lần, không dùng Vùng Hỗn Mang và tẩy dòng): hết Thường sau khoảng 30 phút, hết Ác Mộng sau khoảng 7 giờ, vào Địa Ngục ngày 3 rồi chững lại ở Địa Ngục 3-7 tới hết tuần. Cần chỉnh tiếp để đạt mục tiêu 2–4 tuần cho cả 4 độ khó.
+Theo bot (mỗi phút ghé một lần, không dùng Vùng Hỗn Mang và tẩy dòng, seed 1): hết Thường sau 44 phút, hết Ác Mộng sau 9 giờ, hết Địa Ngục sau khoảng 2,5 ngày, hết Đày Đọa sau khoảng 17 ngày. Chỗ chậm nhất là Đày Đọa 2-5 tới 2-10 (khoảng 8 ngày): sức mạnh lúc này chỉ còn tăng nhờ cường hóa và rune không giới hạn. Đổi seed thì thời điểm hết Đày Đọa dao động khoảng 16–19 ngày.
 
 ## Bản quyền nội dung
 

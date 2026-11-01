@@ -86,6 +86,8 @@ func rv(id: String) -> float:
 
 func rune_cost(id: String) -> int:
 	var r := rune_def(id)
+	if r.max == 0:  # uncapped runes: polynomial price, so gold keeps buying power for weeks instead of stalling
+		return int(r.cost * pow(1.0 + rune_level(id), r.grow))
 	return int(r.cost * pow(r.grow, rune_level(id)))
 
 
@@ -324,9 +326,9 @@ func stats(cls: String) -> Dictionary:
 	var rune_atk := (rv("growth") + rv("might") + rv("mastery")) / 100.0
 	var s := {
 		"cls": cls, "dmg": c.dmg, "range": c.range, "level": lv,
-		"hp": (c.hp + c.g_hp * (lv - 1) + g.call("hp")) * (1.0 + g.call("hp_pct") + rv("vitality") / 100.0),
+		"hp": (c.hp + c.g_hp * (lv - 1) + g.call("hp")) * (1.0 + g.call("hp_pct") + (rv("vitality") + rv("bulwark")) / 100.0),
 		"atk": (c.atk + c.g_atk * (lv - 1) + g.call("atk")) * (1.0 + g.call("atk_pct")) * (1.0 + rune_atk),
-		"armor": (c.armor + c.g_armor * (lv - 1) + g.call("armor")) * (1.0 + g.call("armor_pct") + rv("guard") / 100.0),
+		"armor": (c.armor + c.g_armor * (lv - 1) + g.call("armor")) * (1.0 + g.call("armor_pct") + (rv("guard") + rv("bulwark")) / 100.0),
 		"mres": minf(D.MRES_CAP, c.mres + g.call("mres") - (D.DIFFS[diff].mres_pen if mode == "campaign" else D.DIFFS[zone_diff()].mres_pen)),
 		"aspd": c.aspd * (1.0 + g.call("aspd_pct") + rv("haste") / 100.0),
 		"crit": minf(D.CRIT_CAP, c.crit + g.call("crit")),
@@ -456,12 +458,35 @@ func _wave_rng(w: int) -> RandomNumberGenerator:
 	return r
 
 
+## Monster curves per level. Growth slows after MOB_KNEE_LV: past the hero level cap, power comes only
+## from gear, enhancement and runes, which grow far slower than the early exponential (Q5.5 C, Q7.3 A).
+static func _curve(lv: int, g1: float, g2: float) -> float:
+	var k := mini(lv, D.MOB_KNEE_LV) - 1
+	return pow(g1, k) * pow(g2, maxi(0, lv - D.MOB_KNEE_LV))
+
+
+static func mob_hp(lv: int) -> float:
+	return D.MOB_HP0 * _curve(lv, D.MOB_HP_GROWTH, D.MOB_HP_GROWTH2)
+
+
+static func mob_atk(lv: int) -> float:
+	return D.MOB_ATK0 * _curve(lv, D.MOB_ATK_GROWTH, D.MOB_ATK_GROWTH2)
+
+
+static func mob_gold(lv: int) -> float:
+	return D.GOLD0 * _curve(lv, D.GOLD_GROWTH, D.GOLD_GROWTH2)
+
+
+static func mob_exp(lv: int) -> float:
+	return D.EXP0 * pow(D.EXP_GROWTH, lv - 1)
+
+
 func _make_mob(id: String, lv: int, r: RandomNumberGenerator, elite_n: int) -> Dictionary:
 	var m: Dictionary = D.MOBS[id]
 	var w_hp := 1.0 + 0.04 * (wave - 1)
 	var mob := {"uid": _next_uid(), "id": id, "name": m.name, "sprite": m.sprite, "role": m.role, "dmg": m.dmg,
-		"hp": D.MOB_HP0 * pow(D.MOB_HP_GROWTH, lv - 1) * m.hp * w_hp,
-		"atk": D.MOB_ATK0 * pow(D.MOB_ATK_GROWTH, lv - 1) * m.atk,
+		"hp": mob_hp(lv) * m.hp * w_hp,
+		"atk": mob_atk(lv) * m.atk,
 		"aspd": m.aspd, "armor": D.MOB_ARMOR_PER_LV * lv * m.armor, "mres": minf(D.MRES_CAP, m.mres + lv * 0.3),
 		"dodge": m.dodge, "boss": false, "act_boss": false, "elite": [], "cd": 0.5 + r.randf(),
 		"gold": 1.0, "loot": false, "regen": 0.0, "thorns": 0.0, "level": lv, "skills": [], "scale": 1.0,
@@ -489,15 +514,17 @@ func _make_elite(mob: Dictionary, n: int, r: RandomNumberGenerator) -> void:
 			continue
 		picked.append(k)
 	mob.hp *= D.ELITE_HP
+	var pw: float = D.ELITE_AFFIX_POWER[clampi(picked.size(), 1, 4) - 1]
+	var scaled := func(a: Dictionary, k: String) -> float: return 1.0 + (a.get(k, 1.0) - 1.0) * pw
 	for k in picked:
 		var a: Dictionary = D.ELITE_AFFIXES[k]
-		mob.hp *= a.get("hp", 1.0)
-		mob.atk *= a.get("atk", 1.0)
-		mob.aspd *= a.get("aspd", 1.0)
-		mob.armor *= a.get("armor", 1.0)
-		mob.dodge = minf(D.DODGE_CAP, mob.dodge + a.get("dodge", 0.0))
-		mob.regen += a.get("regen", 0.0)
-		mob.thorns += a.get("thorns", 0.0)
+		mob.hp *= scaled.call(a, "hp")
+		mob.atk *= scaled.call(a, "atk")
+		mob.aspd *= scaled.call(a, "aspd")
+		mob.armor *= scaled.call(a, "armor")
+		mob.dodge = minf(D.DODGE_CAP, mob.dodge + a.get("dodge", 0.0) * pw)
+		mob.regen += a.get("regen", 0.0) * pw
+		mob.thorns += a.get("thorns", 0.0) * pw
 		mob.gold *= a.get("gold", 1.0)
 		if a.get("magic", false):
 			mob.dmg = "magic"
@@ -801,8 +828,8 @@ func _mob_died(m: int) -> void:
 	var mob: Dictionary = mobs[m]
 	kills += 1
 	var lv: int = mob.level
-	var g: float = D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * mob.gold * team_gold_mult()
-	var xp := D.EXP0 * pow(D.EXP_GROWTH, lv - 1)
+	var g: float = mob_gold(lv) * mob.gold * team_gold_mult()
+	var xp := mob_exp(lv)
 	var drop_chance := 0.03 * (1.0 + team_mf())
 	if mob.boss:
 		g *= 8.0
@@ -866,7 +893,7 @@ func _stage_cleared() -> void:
 	var first := not first_kills.has(key)
 	first_kills[key] = true
 	var lv := stage_level()
-	var bonus := D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * 20.0 * team_gold_mult()
+	var bonus := mob_gold(lv) * 20.0 * team_gold_mult()
 	if first:
 		bonus *= D.FIRST_KILL_GOLD  # Q13.4 note
 	gold += int(bonus)
@@ -983,7 +1010,7 @@ func open_chest() -> bool:
 		return false
 	chests -= 1
 	pity_chests += 1
-	gold += int(D.GOLD0 * pow(D.GOLD_GROWTH, stage_level() - 1) * 15.0 * team_gold_mult())
+	gold += int(mob_gold(stage_level()) * 15.0 * team_gold_mult())
 	stones[0] += 1 + rng.randi() % 2
 	var got_immortal := false
 	for k in D.CHEST_ITEMS:
@@ -1096,7 +1123,7 @@ func sort_bag() -> void:
 # =========================================================== enhancement (Q9)
 
 func enh_cost(it: Dictionary) -> int:
-	return int(D.ENH_COST0 * pow(D.ENH_COST_GROWTH, it.enh) * (1.0 - rv("smith") / 100.0))
+	return int(D.ENH_COST0 * pow(D.ENH_COST_GROWTH, it.enh) * D.RARITIES[it.rarity].mult * (1.0 - rv("smith") / 100.0))
 
 
 func protect_cost(it: Dictionary) -> int:
@@ -1201,10 +1228,9 @@ func offline_reward(elapsed: float) -> Dictionary:
 		return {"gold": 0, "xp": 0}
 	var t := minf(elapsed, offline_cap())
 	var lv := stage_level()
-	var mob_hp := D.MOB_HP0 * pow(D.MOB_HP_GROWTH, lv - 1) * 1.1
-	var kps := minf(team_dps() / mob_hp, 2.0) * 0.5
-	return {"gold": int(t * kps * D.GOLD0 * pow(D.GOLD_GROWTH, lv - 1) * team_gold_mult()),
-		"xp": int(t * kps * D.EXP0 * pow(D.EXP_GROWTH, lv - 1))}
+	var hp := mob_hp(lv) * 1.1
+	var kps := minf(team_dps() / hp, 2.0) * 0.5
+	return {"gold": int(t * kps * mob_gold(lv) * team_gold_mult()), "xp": int(t * kps * mob_exp(lv))}
 
 
 func apply_offline(elapsed: float) -> Dictionary:
