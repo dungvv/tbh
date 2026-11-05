@@ -40,15 +40,16 @@ godot --headless --path game --script res://tools/balance.gd -- 504
 - Giá trị đọc từ save phải được kẹp vào khoảng hợp lệ (cấp rune, số màn…). Save có thể bị sửa tay.
 - Không bao giờ xóa trường cũ mà không có bước chuyển đổi trong `from_dict()`.
 
-## 5. Sprite
+## 5. Hình 3D và giao diện
 
-- Nhân vật và quái dùng 0x72 trong `art/0x72/`; hiệu ứng skill dùng sheet pixelfx trong `fx/` (xem `art/README.md`). Icon nhỏ là lưới ký tự trong `art.gd`, mỗi ký tự một pixel, màu phải có trong `PALETTE`.
-- Mọi hàng của một sprite phải dài bằng nhau. Test có kiểm tra điều này và báo đúng hàng sai.
-- Nhân vật và quái quay mặt: hero nhìn sang phải, quái nhìn sang trái.
-- Quái và hero dùng 2 frame (`_a`, `_b`); hero có thêm frame tấn công.
-- Icon đồ vẽ bằng màu xám để game tô theo phẩm.
-- Muốn thay bằng art thật: đặt PNG cùng tên vào `game/art/` (xem `game/art/README.md`) và ghi nguồn, giấy phép vào bảng trong file đó.
-- Sau khi vẽ, render kiểm tra bằng `tools/screenshot.gd` ở đúng tỉ lệ trong game trước khi coi là xong.
+- Nhân vật và quái là model 3D trong `art3d/`, build bằng `tools/build_models.py` (Blender) rồi đo bằng `tools/measure_models.gd`. Quy trình và nguồn ở `art3d/README.md`.
+- `sim.gd` vẫn là 2D: `main.gd` quyết định vị trí trên dải, `view3d.gd` chỉ đặt model vào đó. Đừng đưa logic trận đánh vào `view3d.gd`.
+- Model dùng shader cel lì (`TOON` trong `view3d.gd`), không dùng vật liệu PBR gốc vì trông bóng ở cỡ nhỏ.
+- Hero quay mặt sang phải, quái sang trái, cả hai xoay `YAW` độ về phía camera.
+- Đồ đang mặc hiện trên model qua `HERO_MODELS` trong `data.gd`; vũ khí +7 trở lên phát sáng.
+- Giao diện vẽ bằng các hàm trong `ui.gd` (khung, nút, thanh, ngọc). Đừng tự `draw_rect` một bảng màu riêng trong panel.
+- Icon nhỏ là lưới ký tự trong `art.gd`, mỗi ký tự một pixel, màu phải có trong `PALETTE`; mọi hàng dài bằng nhau (có test).
+- Sau khi đổi hình, render kiểm tra bằng `tools/screenshot.gd` trước khi coi là xong.
 
 ## 6. Âm thanh và nhạc
 
@@ -63,6 +64,9 @@ Game chạy cả ngày, nên:
 
 - Giữ `Engine.max_fps = 30`.
 - Không tạo node mới mỗi frame; vẽ bằng `_draw()`.
+- HUD và panel vẽ vào texture cache (`redraw_ui()` trong `main.gd`), chỉ cập nhật 4 lần mỗi giây hoặc khi có chuột. `StyleBoxFlat`, chữ có viền và `draw_colored_polygon` đắt với renderer canvas; đừng đưa chúng vào lớp vẽ mỗi frame (`draw_field`).
+- Animation và render 3D chạy `ANIM_FPS` (15) lần mỗi giây. Model giữ khoảng 1.600 tam giác skinned và một lưới thân; mỗi lưới skinned thêm vào đều tốn CPU mỗi lần cập nhật.
+- Đo CPU bằng thời gian CPU tích lũy của tiến trình trong khoảng 12 giây, không dùng `%cpu` tức thời: con số đó nhiễu tới ±5%.
 - Việc nặng (render nhạc, khoảng 0,3 giây) chỉ làm khi thật sự cần, ví dụ khi đổi act.
 
 ## 8. Cửa sổ và đa nền tảng

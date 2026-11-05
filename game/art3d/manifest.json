@@ -1,0 +1,272 @@
+{
+ "assassin": {
+  "anims": [
+   "attack",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.219,
+  "tris": 1592.0
+ },
+ "berserker": {
+  "anims": [
+   "attack",
+   "attack2",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "idle2",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.375,
+  "tris": 1597.0
+ },
+ "blue_demon": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 2.719,
+  "tris": 1599.0
+ },
+ "cactoro": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 3.844,
+  "tris": 1600.0
+ },
+ "cactus_king": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 3.594,
+  "tris": 1598.0
+ },
+ "cleric": {
+  "anims": [
+   "attack",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.688,
+  "tris": 1593.0
+ },
+ "dragon": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.313,
+  "height": 2.813,
+  "tris": 1599.0
+ },
+ "frog": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 2.594,
+  "tris": 1599.0
+ },
+ "ghost": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.281,
+  "height": 3.063,
+  "tris": 1600.0
+ },
+ "goleling": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 1.5,
+  "height": 1.531,
+  "tris": 1599.0
+ },
+ "knight": {
+  "anims": [
+   "attack",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.438,
+  "tris": 1597.0
+ },
+ "mushnub": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": -0.062,
+  "height": 3.313,
+  "tris": 1248.0
+ },
+ "mushroom_king": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": -0.062,
+  "height": 4.406,
+  "tris": 1598.0
+ },
+ "orc": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": -1.75,
+  "height": 3.094,
+  "tris": 1597.0
+ },
+ "ranger": {
+  "anims": [
+   "attack",
+   "attack2",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.188,
+  "tris": 1597.0
+ },
+ "skeleton": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 1.938,
+  "tris": 1594.0
+ },
+ "skeleton_mage": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 2.625,
+  "tris": 1596.0
+ },
+ "slime": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": -0.062,
+  "height": 2.0,
+  "tris": 1030.0
+ },
+ "sorcerer": {
+  "anims": [
+   "attack",
+   "cheer",
+   "death",
+   "hit",
+   "idle",
+   "run",
+   "skill"
+  ],
+  "foot": 0.0,
+  "height": 2.688,
+  "tris": 1593.0
+ },
+ "tribal": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.313,
+  "height": 4.125,
+  "tris": 1599.0
+ },
+ "yeti": {
+  "anims": [
+   "attack",
+   "death",
+   "hit",
+   "idle",
+   "run"
+  ],
+  "foot": 0.0,
+  "height": 2.75,
+  "tris": 1600.0
+ }
+}

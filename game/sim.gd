@@ -484,7 +484,7 @@ static func mob_exp(lv: int) -> float:
 func _make_mob(id: String, lv: int, r: RandomNumberGenerator, elite_n: int) -> Dictionary:
 	var m: Dictionary = D.MOBS[id]
 	var w_hp := 1.0 + 0.04 * (wave - 1)
-	var mob := {"uid": _next_uid(), "id": id, "name": m.name, "sprite": m.sprite, "role": m.role, "dmg": m.dmg,
+	var mob := {"uid": _next_uid(), "id": id, "name": m.name, "model": m.model, "size": m.size, "fly": m.get("fly", false), "role": m.role, "dmg": m.dmg,
 		"hp": mob_hp(lv) * m.hp * w_hp,
 		"atk": mob_atk(lv) * m.atk,
 		"aspd": m.aspd, "armor": D.MOB_ARMOR_PER_LV * lv * m.armor, "mres": minf(D.MRES_CAP, m.mres + lv * 0.3),
@@ -584,7 +584,9 @@ func _make_boss(lv: int, r: RandomNumberGenerator) -> Dictionary:
 		var a_i := act() - 1 if mode == "campaign" else r.randi() % 3
 		b = _make_mob(D.ACT_MOBS[a_i][0], lv, r, 0)
 		b.name = D.ACT_BOSSES[a_i].name
-		b.sprite = D.ACT_BOSSES[a_i].sprite
+		b.model = D.ACT_BOSSES[a_i].model
+		b.size = D.ACT_BOSSES[a_i].size
+		b.fly = D.ACT_BOSSES[a_i].get("fly", false)
 		b.hp *= D.ACT_BOSS_HP
 		b.atk *= D.ACT_BOSS_ATK
 		b.skills = D.BOSS_SKILLS.duplicate()

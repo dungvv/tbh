@@ -5,6 +5,7 @@ const D := preload("res://data.gd")
 const Sim := preload("res://sim.gd")
 const Art := preload("res://art.gd")
 const Gfx := preload("res://gfx.gd")
+const Ui := preload("res://ui.gd")
 
 const WEAPON_ICONS := {"sword": "weapon_knight_sword", "bow": "weapon_bow", "staff": "weapon_red_magic_staff",
 	"holy": "weapon_green_magic_staff", "axe": "weapon_waraxe", "dagger": "weapon_duel_sword"}
@@ -44,8 +45,7 @@ static func item_icon(m, it, r: Rect2) -> void:
 	if it == null:
 		return
 	var col: Color = D.RARITIES[it.rarity].color
-	m.draw_rect(r, col.darkened(0.75))
-	m.draw_rect(r, col.darkened(0.2), false, 1.0)
+	Ui.slot(m._ci, r, col, it.uid == m.sel_item)
 	var pad := 3.0
 	var inner := r.grow(-pad)
 	if it.slot == "weapon":
@@ -53,13 +53,13 @@ static func item_icon(m, it, r: Rect2) -> void:
 		if t != null:
 			var s := minf(inner.size.y / t.get_height(), inner.size.x / t.get_width())
 			var sz := t.get_size() * s
-			m.draw_texture_rect(t, Rect2(inner.get_center() - sz / 2.0, sz), false, Color.WHITE.lerp(col, 0.4))
+			m._ci.draw_texture_rect(t, Rect2(inner.get_center() - sz / 2.0, sz), false, Color.WHITE.lerp(col, 0.4))
 	else:
-		m.draw_texture_rect(Art.tex("icon_" + it.slot), inner, false, col.lightened(0.2))
+		m._ci.draw_texture_rect(Art.tex("icon_" + it.slot), inner, false, col.lightened(0.2))
 	if it.enh > 0:
 		m.text(r.position + Vector2(1, r.size.y - 2), "+%d" % it.enh, Color.WHITE, 9)
 	if it.get("locked", false):
-		m.draw_texture_rect(Art.tex("icon_lock"), Rect2(r.end - Vector2(9, r.size.y - 1), Vector2(8, 10)), false)
+		m._ci.draw_texture_rect(Art.tex("icon_lock"), Rect2(r.end - Vector2(9, r.size.y - 1), Vector2(8, 10)), false)
 
 
 ## Name, main stat and affix lines (colored by quality, MU style). Returns the y after the last line.
@@ -78,7 +78,7 @@ static func item_details(m, it: Dictionary, pos: Vector2, with_locks := false) -
 		if with_locks:
 			m.button(Rect2(pos.x, y + 2, 14, 13), "", m.sim.toggle_lock.bind(it.uid, i), Color(0.5, 0.4, 0.1) if a.locked else Color(0.2, 0.2, 0.26))
 			if a.locked:
-				m.draw_texture_rect(Art.tex("icon_lock"), Rect2(pos.x + 3, y + 3, 8, 10), false)
+				m._ci.draw_texture_rect(Art.tex("icon_lock"), Rect2(pos.x + 3, y + 3, 8, 10), false)
 			lx += 18
 		m.text(Vector2(lx, y + 13), "%s  [%d]" % [_fmt_stat(a.stat, a.val), a.q], qc, 12)
 		y += 16
@@ -118,14 +118,12 @@ static func _bag(m) -> void:
 		var s: String = D.SLOTS[i]
 		var r := Rect2(70 + i * 40, 32, 34, 34)
 		var it = sim.heroes[cls].equip[s]
-		m.draw_rect(r, Color(0.14, 0.14, 0.18))
+		Ui.slot(m._ci, r, Color(0.45, 0.4, 0.55))
 		if it == null:
-			m.draw_texture_rect(Art.tex("icon_" + s if s != "weapon" else "icon_weapon"), r.grow(-6), false, Color(1, 1, 1, 0.15))
+			m._ci.draw_texture_rect(Art.tex("icon_" + s if s != "weapon" else "icon_weapon"), r.grow(-6), false, Color(1, 1, 1, 0.15))
 		else:
 			item_icon(m, it, r)
 			m.area(r, func(): m.sel_item = it.uid)
-		if it != null and it.uid == m.sel_item:
-			m.draw_rect(r, Color.WHITE, false, 2.0)
 	m.text(Vector2(320, 54), "Túi %d/%d" % [sim.bag.size(), sim.bag_cap()], Color.WHITE, 12)
 	var cols := 15
 	var cell := 30.0
@@ -133,8 +131,6 @@ static func _bag(m) -> void:
 		var it: Dictionary = sim.bag[i]
 		var r := Rect2(10 + (i % cols) * cell, 76 + (i / cols) * cell, cell - 3, cell - 3)
 		item_icon(m, it, r)
-		if it.uid == m.sel_item:
-			m.draw_rect(r, Color.WHITE, false, 2.0)
 		m.area(r, func(): m.sel_item = it.uid)
 	var by := 296.0
 	m.button(Rect2(10, by, 80, 24), "Sắp xếp", sim.sort_bag)
@@ -185,9 +181,10 @@ static func _hero(m) -> void:
 		var cd: Dictionary = D.CLASSES[c]
 		var r := Rect2(10, 36 + k * 44, 200, 40)
 		var owned: bool = c in sim.owned
-		m.draw_rect(r, Color(0.3, 0.3, 0.45) if m.sel_class == c else Color(0.14, 0.14, 0.19))
-		Gfx.draw_sprite(m, Gfx.frame(cd.sprites[sim.heroes[c].outfit], "idle", m._t), Vector2(r.position.x + 18, r.end.y - 2), 1.3, false,
-			Color.WHITE if owned else Color(0.3, 0.3, 0.3))
+		Ui.card(m._ci, r, m.sel_class == c)
+		var pt := Gfx.portrait(c, int(38 * m.get_window().content_scale_factor))
+		if pt != null:
+			m._ci.draw_texture_rect(pt, Rect2(r.position.x + 1, r.position.y + 1, 38, 38), false, Color.WHITE if owned else Color(0.3, 0.3, 0.3))
 		m.text(Vector2(r.position.x + 40, r.position.y + 16), cd.name, Color.WHITE if owned else Color(0.55, 0.55, 0.6), 13)
 		m.text(Vector2(r.position.x + 40, r.position.y + 32), ("Lv %d · %s" % [sim.heroes[c].level, cd.role]) if owned else
 			"Mở bằng rune %s" % Sim.rune_def(cd.unlock).name, Color(0.7, 0.7, 0.75), 10)
@@ -223,7 +220,7 @@ static func _hero(m) -> void:
 		var active: bool = i < D.SKILLS[cls].size()
 		var can: bool = sim.can_learn(cls, sk.id)
 		var locked: bool = sim.points_spent(cls) < sk.get("req", 0)
-		m.draw_rect(Rect2(sx, y, 380, 22), Color(0.16, 0.16, 0.22) if active else Color(0.12, 0.12, 0.16))
+		Ui.card(m._ci, Rect2(sx, y, 380, 22), false, Color(0.1, 0.08, 0.15, 0.0 if active else 0.5))
 		m.text(Vector2(sx + 4, y + 15), sk.name, Color.WHITE if not locked else Color(0.5, 0.5, 0.55), 12)
 		m.text(Vector2(sx + 110, y + 15), "%d/25" % lv, Color(0.8, 0.8, 0.85), 11)
 		var desc := _skill_desc(sim, cls, sk, maxi(lv, 1)) if not locked else "cần %d điểm đã dùng" % sk.req
@@ -311,7 +308,7 @@ static func _forge(m) -> void:
 		var qc: Color = D.QUALITY_COLORS[clampi((a.q - 1) / 2, 0, 4)]
 		m.button(Rect2(x, y + 2, 14, 14), "", sim.toggle_lock.bind(it.uid, i), Color(0.5, 0.4, 0.1) if a.locked else Color(0.2, 0.2, 0.26))
 		if a.locked:
-			m.draw_texture_rect(Art.tex("icon_lock"), Rect2(x + 3, y + 4, 8, 10), false)
+			m._ci.draw_texture_rect(Art.tex("icon_lock"), Rect2(x + 3, y + 4, 8, 10), false)
 		m.text(Vector2(x + 20, y + 14), "%s  [%d]" % [_fmt_stat(a.stat, a.val), a.q], qc, 12)
 		var c1: int = sim.reroll_cost(it, it.affixes.size() - 1)
 		m.button(Rect2(x + 270, y, 200, 18), "Tẩy riêng dòng này · %s" % m.fmt(c1), func(): sim.reroll(it.uid, i), Color(0.3, 0.25, 0.45),
@@ -338,22 +335,27 @@ static func _rune(m) -> void:
 		var b := _rune_rect(r)
 		var mid := a.end.x + (b.position.x - a.end.x) / 2.0
 		var col := Color(0.75, 0.75, 0.85) if sim.rune_level(r.req) > 0 else Color(0.3, 0.3, 0.36)
-		m.draw_polyline(PackedVector2Array([Vector2(a.end.x, a.position.y + 11), Vector2(mid, a.position.y + 11),
+		m._ci.draw_polyline(PackedVector2Array([Vector2(a.end.x, a.position.y + 11), Vector2(mid, a.position.y + 11),
 			Vector2(mid, b.position.y + 11), Vector2(b.position.x, b.position.y + 11)]), col, 2.0)
 	for r in D.RUNES:
 		var rect := _rune_rect(r)
 		var lv: int = sim.rune_level(r.id)
-		var fill := Color(0.2, 0.2, 0.24)
+		var fill := Color(0.3, 0.27, 0.36)
 		if Sim.is_maxed(r, lv):
-			fill = Color(0.6, 0.45, 0.1)
+			fill = Ui.GOLD
 		elif sim.can_buy_rune(r.id):
-			fill = Color(0.2, 0.45, 0.85)
+			fill = Color(0.35, 0.62, 1.0)
 		elif sim.rune_unlocked(r.id):
-			fill = Color(0.18, 0.28, 0.45)
-		m.draw_rect(rect, fill)
-		m.draw_rect(rect, Color.WHITE if r.id == m.sel_rune else Color(0.05, 0.05, 0.08), false, 2.0 if r.id == m.sel_rune else 1.0)
-		m.text(rect.position + Vector2(2, 15), ("%d" % lv) if r.max != 1 else ("✓" if lv > 0 else ""), Color.WHITE, 10)
-		m.text(rect.position + Vector2(26, 15), r.name, Color(0.9, 0.9, 0.9) if sim.rune_unlocked(r.id) else Color(0.5, 0.5, 0.55), 11)
+			fill = Color(0.3, 0.38, 0.6)
+		Ui.gem(m._ci, rect.get_center(), 11.0 if r.id == m.sel_rune else 9.0, fill)
+		if r.id == m.sel_rune:
+			m._ci.draw_arc(rect.get_center(), 13.0, 0, TAU, 24, Color.WHITE, 1.5, true)
+		var badge: String = ("%d" % lv) if r.max != 1 else ("✓" if lv > 0 else "")
+		if badge != "":
+			m.text(rect.position + Vector2(15, 25), badge, Ui.GOLD if Sim.is_maxed(r, lv) else Ui.TEXT, 9)
+		var lw: float = m.text_w(r.name, 11)
+		Ui.card(m._ci, Rect2(rect.position + Vector2(24, 2), Vector2(lw + 8, 18)))  # covers the link line behind the name
+		m.text(rect.position + Vector2(28, 15), r.name, Ui.TEXT if sim.rune_unlocked(r.id) else Ui.TEXT_DIM, 11)
 		m.area(Rect2(rect.position, Vector2(100, 22)), func(): m.sel_rune = r.id)
 	var s := Sim.rune_def(m.sel_rune)
 	var lv: int = sim.rune_level(m.sel_rune)
@@ -415,4 +417,4 @@ static func _settings(m) -> void:
 	m.text(Vector2(10, 62), "Độ đậm nền: %d%%" % roundi(m.bg_alpha * 100), Color.WHITE, 12)
 	m.button(Rect2(150, 48, 30, 22), "−", func(): m.bg_alpha = maxf(0.0, m.bg_alpha - 0.1))
 	m.button(Rect2(186, 48, 30, 22), "+", func(): m.bg_alpha = minf(1.0, m.bg_alpha + 0.1))
-	m.text(Vector2(10, 100), "Hình: 0x72 DungeonTileset II (CC0). Hiệu ứng: pixelfx (MIT). Âm thanh, nhạc: tạo bằng code.", Color(0.6, 0.6, 0.65), 11)
+	m.text(Vector2(10, 100), "Nhân vật 3D: KayKit, Quaternius (CC0). Icon: 0x72 (CC0). Hiệu ứng: pixelfx (MIT). Âm thanh, nhạc: tạo bằng code.", Color(0.6, 0.6, 0.65), 11)

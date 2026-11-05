@@ -1,0 +1,28 @@
+{
+  "_doc": "Input for tools/build_models.py (Blender). src paths are relative to the --src folder (see art3d/README.md). anims: canonical name -> source action candidates, first match wins. drop: meshes removed. attach: [gltf, bone] weapons parented to a bone. hue: [lo, hi, new hue, saturation mult, value mult] recolors texture pixels with hue in lo..hi. portrait: hand-slot meshes shown in the hero portrait (art3d/portraits/).",
+  "heroes": {
+    "knight": {"portrait": ["1H_Sword", "Round_Shield"], "src": "kaykit_adv/Knight.glb", "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["1H_Melee_Attack_Slice_Diagonal"], "skill": ["1H_Melee_Attack_Chop"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}},
+    "ranger": {"portrait": ["1H_Crossbow"], "src": "kaykit_adv/Rogue.glb", "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["1H_Ranged_Shoot"], "attack2": ["2H_Ranged_Shoot"], "skill": ["2H_Ranged_Shooting", "2H_Ranged_Shoot"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}},
+    "sorcerer": {"portrait": ["1H_Wand", "Spellbook"], "src": "kaykit_adv/Mage.glb", "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["Spellcast_Shoot"], "skill": ["Spellcast_Long"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}},
+    "cleric": {"portrait": ["1H_Wand", "Spellbook_open"], "src": "kaykit_adv/Mage.glb", "hue": [0.55, 0.92, 0.11, 0.3, 1.9], "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["Spellcast_Shoot"], "skill": ["Spellcast_Raise"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}},
+    "berserker": {"portrait": ["1H_Axe", "Barbarian_Round_Shield"], "src": "kaykit_adv/Barbarian.glb", "anims": {"idle": ["Idle"], "idle2": ["2H_Melee_Idle"], "run": ["Running_A"], "attack": ["1H_Melee_Attack_Chop"], "attack2": ["2H_Melee_Attack_Chop"], "skill": ["2H_Melee_Attack_Spin"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}},
+    "assassin": {"portrait": ["Knife", "Knife_Offhand"], "src": "kaykit_adv/Rogue_Hooded.glb", "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["Dualwield_Melee_Attack_Stab"], "skill": ["Dualwield_Melee_Attack_Slice"], "hit": ["Hit_A"], "death": ["Death_A"], "cheer": ["Cheer"]}}
+  },
+  "monsters": {
+    "slime": {"src": "polypizza/PinkSlime.glb", "anims": {"idle": ["Idle"], "run": ["Walk"], "attack": ["Bite_Front"], "hit": ["HitRecieve"], "death": ["Death"]}},
+    "mushnub": {"src": "polypizza/Mushnub.glb", "anims": {"idle": ["Idle"], "run": ["Walk"], "attack": ["Bite_Front"], "hit": ["HitRecieve"], "death": ["Death"]}},
+    "frog": {"src": "polypizza/Frog.glb", "anims": {"idle": ["Idle"], "run": ["Run"], "attack": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "goleling": {"src": "polypizza/Goleling.glb", "anims": {"idle": ["Flying_Idle"], "run": ["Fast_Flying"], "attack": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "mushroom_king": {"src": "polypizza/MushnubEvolved.glb", "anims": {"idle": ["Idle"], "run": ["Walk"], "attack": ["Bite_Front"], "skill": ["Jump"], "hit": ["HitRecieve"], "death": ["Death"]}},
+    "orc": {"src": "polypizza/Orc.glb", "anims": {"idle": ["Idle"], "run": ["Run"], "attack": ["Weapon", "Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "skeleton": {"src": "kaykit_skel/Skeleton_Minion.glb", "attach": [["kaykit_skel/Skeleton_Blade.gltf", "handslot.r"]], "anims": {"idle": ["Idle_Combat", "Idle"], "run": ["Running_A"], "attack": ["1H_Melee_Attack_Chop"], "hit": ["Hit_A"], "death": ["Death_A"]}},
+    "cactoro": {"src": "polypizza/Cactoro2.glb", "anims": {"idle": ["Idle"], "run": ["Run"], "attack": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "tribal": {"src": "polypizza/Tribal.glb", "anims": {"idle": ["Flying_Idle"], "run": ["Fast_Flying"], "attack": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "cactus_king": {"src": "polypizza/Cactoro1.glb", "anims": {"idle": ["Idle"], "run": ["Walk"], "attack": ["Bite_Front"], "skill": ["Jump"], "hit": ["HitRecieve"], "death": ["Death"]}},
+    "blue_demon": {"src": "polypizza/BlueDemon.glb", "anims": {"idle": ["Idle"], "run": ["Run"], "attack": ["Weapon", "Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "ghost": {"src": "polypizza/Ghost.glb", "anims": {"idle": ["Flying_Idle"], "run": ["Fast_Flying"], "attack": ["Headbutt", "Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "yeti": {"src": "polypizza/Yeti2.glb", "anims": {"idle": ["Idle"], "run": ["Run"], "attack": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}},
+    "skeleton_mage": {"src": "kaykit_skel/Skeleton_Mage.glb", "attach": [["kaykit_skel/Skeleton_Staff.gltf", "handslot.r"]], "anims": {"idle": ["Idle"], "run": ["Running_A"], "attack": ["Spellcast_Shoot"], "hit": ["Hit_A"], "death": ["Death_A"]}},
+    "dragon": {"src": "polypizza/DragonEvolved.glb", "anims": {"idle": ["Flying_Idle"], "run": ["Fast_Flying"], "attack": ["Headbutt"], "skill": ["Punch"], "hit": ["HitReact"], "death": ["Death"]}}
+  }
+}

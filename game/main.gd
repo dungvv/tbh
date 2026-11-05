@@ -9,16 +9,18 @@ const Gfx := preload("res://gfx.gd")
 const Sfx := preload("res://sfx.gd")
 const Music := preload("res://music.gd")
 const Panels := preload("res://panels.gd")
+const View3D := preload("res://view3d.gd")
+const Ui := preload("res://ui.gd")
+const Field := preload("res://field.gd")
+const UI_REDRAW_SEC := 0.25  # HUD and panels refresh 4 times a second, and at once on mouse input
 const MUSIC_DB := -20.0  # quiet: this plays next to work apps all day
 const SAVE_PATH := "user://save.json"
 const STRIP_H := 140
 const HUD_W := 250
 const PANEL_W := 800
 const PANEL_HEIGHTS := {"bag": 330, "hero": 330, "forge": 300, "rune": 330, "portal": 250, "settings": 150}
-const HERO_SCALE := 3.0
-const MOB_SCALE := 2.6
 const HERO_GAP := 58.0
-const MOB_GAP := 50.0
+const MOB_GAP := 62.0
 const SAVE_EVERY_SEC := 30.0
 
 var sim := Sim.new()
@@ -39,7 +41,7 @@ var _music_act := -1
 var _save_timer := 0.0
 var _toast := ""
 var _toast_left := 0.0
-var _font := ThemeDB.fallback_font
+var _font := Ui.font()
 var _btns := []  # [{r, a}] registered during the last draw
 var _mouse := Vector2(-1, -1)
 var _t := 0.0
@@ -49,7 +51,14 @@ var _nums := []  # floating numbers {text, pos, t, col}
 var _mob_x := {}  # uid -> current x
 var _hero_anim := {}  # slot -> {swing, hurt}
 var _mob_anim := {}  # uid -> {swing, hurt}
-var _dying := []  # {sprite, pos, t, scale}
+var view := View3D.new()  # the 3D battle, drawn as a texture under bars and effects
+var field := Field.new()  # battlefield layer, redrawn every frame
+var _ci: CanvasItem = self  # where text() and _bar() draw: this node, or the field while it draws
+var _ui_timer := 0.0
+## HUD and panels render into this texture only when they change: rounded boxes and outlined text are
+## costly for the canvas renderer, and redrawing them 30 times a second tripled the game's idle CPU.
+var ui_vp := SubViewport.new()
+var ui_canvas := Field.new()
 
 
 func _ready() -> void:
@@ -57,6 +66,17 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # crisp pixel art
 	add_child(sfx)
 	add_child(music)
+	add_child(view)
+	field.m = self
+	field.show_behind_parent = true
+	add_child(field)
+	ui_vp.transparent_bg = true
+	ui_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	ui_canvas.m = self
+	ui_canvas.ui = true
+	ui_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ui_vp.add_child(ui_canvas)
+	add_child(ui_vp)
 	_place_window()
 	_load()
 	_update_music()
@@ -91,10 +111,12 @@ func _place_window() -> void:
 	for i in poly.size():
 		poly[i] *= scale
 	DisplayServer.window_set_mouse_passthrough(poly)
+	redraw_ui.call_deferred()  # the window size changed
 
 
 func toggle_panel(name: String) -> void:
 	panel = "" if panel == name else name
+	redraw_ui()
 	_place_window()
 
 
@@ -119,14 +141,17 @@ func _process(delta: float) -> void:
 	for n in _nums:
 		n.t += delta
 	_nums = _nums.filter(func(n): return n.t < 0.9)
-	for d in _dying:
-		d.t += delta
-	_dying = _dying.filter(func(d): return d.t < 0.5)
+	_update_view(delta)
 	_toast_left = maxf(_toast_left - delta, 0.0)
 	_save_timer += delta
 	if _save_timer >= SAVE_EVERY_SEC:
 		_save_timer = 0.0
 		_save()
+	field.queue_redraw()
+	_ui_timer += delta
+	if _ui_timer >= UI_REDRAW_SEC:
+		_ui_timer = 0.0
+		redraw_ui()
 	queue_redraw()
 
 
@@ -174,12 +199,15 @@ func _on_event(e: Dictionary) -> void:
 		"attack":
 			_anim_hero(e.slot).swing = 0.15
 			var cls: String = sim.party[e.slot] if e.slot < sim.party.size() else "knight"
+			view.act(cls, "attack", sim.stats(cls).aspd)
 			if D.CLASSES[cls].range == "ranged" and e.mob >= 0:
 				var id := "arrow" if cls == "ranger" else "magic-missile"
 				_add_fx(id, mob_pos(e.mob), 0.45, 1.0, hero_pos(e.slot))
 			sfx.play("arrow" if cls == "ranger" else "hit")
 		"skill":
 			_anim_hero(e.slot).swing = 0.3
+			if e.slot < sim.party.size():
+				view.act(sim.party[e.slot], "skill")
 			var target := mob_pos(e.mob) if e.mob >= 0 else _mobs_center()
 			match e.fx:
 				"fireball", "magic-missile", "arrow":
@@ -202,16 +230,17 @@ func _on_event(e: Dictionary) -> void:
 			_anim_hero(e.slot).hurt = 0.15
 		"mob_attack":
 			_anim_mob(e.mob).swing = 0.15
+			view.act(e.mob, "attack", 1.0)
 			if e.role != "melee":
 				var j := 0
 				_add_fx("magic-missile", hero_pos(j), 0.4, 1.0, mob_pos(e.mob), true)
 		"mob_die":
-			_dying.append({"pos": mob_pos(e.mob), "t": 0.0})
-			_add_fx("poof", mob_pos(e.mob), 0.5, 1.5)
+			_add_fx("poof", mob_pos(e.mob) + Vector2(0, 10), 0.4, 1.5)
 			sfx.play("boss_win" if e.boss else "kill")
 		"slam_warn":
 			show_toast("Boss chuẩn bị đập đất!")
 		"slam":
+			view.act(e.mob, "skill")
 			for i in sim.party.size():
 				_add_fx("ground-slam", hero_pos(i) + Vector2(0, 20), 0.5, 2.5)
 		"summon":
@@ -226,6 +255,7 @@ func _on_event(e: Dictionary) -> void:
 			show_toast("Cả đội gục ngã — đánh lại từ sóng 1")
 			sfx.play("fail")
 		"clear":
+			view.cheer()
 			show_toast("Qua màn! +%d vàng%s" % [e.gold, " (lần đầu)" if e.first else ""])
 		"diff_unlock":
 			show_toast("Mở độ khó %s" % D.DIFFS[e.d].name)
@@ -275,7 +305,8 @@ func _mobs_center() -> Vector2:
 # =========================================================== immediate-mode widgets
 
 func text(pos: Vector2, s: String, col := Color.WHITE, size := 13) -> void:
-	draw_string(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+	_ci.draw_string_outline(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 3, Color(Ui.INK, col.a * 0.85))
+	_ci.draw_string(_font, pos, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 
 func text_w(s: String, size := 13) -> float:
@@ -283,15 +314,24 @@ func text_w(s: String, size := 13) -> float:
 
 
 ## Draw a button and register its click. Disabled buttons are drawn dim and do nothing.
-func button(r: Rect2, label: String, action: Callable, col := Color(0.25, 0.25, 0.32), enabled := true, size := 12) -> void:
+## `col` picks the face color: a Ui.BUTTONS key, or a Color (old dark colors are brightened to fit the style).
+func button(r: Rect2, label: String, action: Callable, col: Variant = "normal", enabled := true, size := 12) -> void:
+	var face_col: Color = Ui.BUTTONS.get(col, Ui.BUTTONS.normal) if typeof(col) == TYPE_STRING else _bright(col)
 	var hover := r.has_point(_mouse) and enabled
-	draw_rect(r, col.lightened(0.15) if hover else (col if enabled else col.darkened(0.4)))
+	var face := Ui.button_face(_ci, r, face_col, hover, enabled)
 	if label != "":
 		var tw := text_w(label, size)
-		text(Vector2(r.position.x + maxf(4.0, (r.size.x - tw) / 2.0), r.position.y + r.size.y / 2.0 + size * 0.38),
-			label, Color.WHITE if enabled else Color(0.6, 0.6, 0.6), size)
+		text(Vector2(face.position.x + maxf(4.0, (face.size.x - tw) / 2.0), face.position.y + face.size.y / 2.0 + size * 0.36),
+			label, Ui.TEXT if enabled else Ui.TEXT_DIM, size)
 	if enabled:
 		_btns.append({"r": r, "a": action})
+
+
+## Panels were written with dark flat colors; lift them into the brighter button palette, keeping the hue.
+static func _bright(c: Color) -> Color:
+	if c.s < 0.15:
+		return Ui.BUTTONS.normal.lerp(c, 0.25)
+	return Color.from_hsv(c.h, clampf(c.s * 1.15, 0.35, 0.8), clampf(c.v * 1.6, 0.5, 0.92))
 
 
 ## A clickable area without drawing.
@@ -302,12 +342,14 @@ func area(r: Rect2, action: Callable) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_mouse = event.position
+		redraw_ui()  # hover highlights
 	if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 		return
 	for i in range(_btns.size() - 1, -1, -1):  # topmost first
 		if _btns[i].r.has_point(event.position):
 			sfx.play("click")
 			_btns[i].a.call()
+			redraw_ui()
 			return
 
 
@@ -319,15 +361,40 @@ func _notification(what: int) -> void:
 # =========================================================== drawing
 
 func _draw() -> void:
+	draw_texture_rect(ui_vp.get_texture(), Rect2(Vector2.ZERO, get_viewport_rect().size), false)
+
+
+## Ask for a fresh HUD and panel texture: re-run their drawing at full screen resolution and render it once.
+func redraw_ui() -> void:
+	var scale := get_window().content_scale_factor
+	var logical := get_viewport_rect().size
+	var px := Vector2i(int(logical.x * scale), int(logical.y * scale))
+	if ui_vp.size != px:
+		ui_vp.size = px
+	ui_vp.canvas_transform = Transform2D.IDENTITY.scaled(Vector2(scale, scale))
+	ui_canvas.queue_redraw()
+	ui_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## Called by the UI layer when redraw_ui() asked for it.
+func draw_ui(ci: CanvasItem) -> void:
+	_ci = ci
 	_btns.clear()
 	var size := get_viewport_rect().size
-	var top := size.y - STRIP_H
-	_draw_background(top, size)
-	_draw_battlefield()
-	_draw_hud(top)
+	_draw_hud(size.y - STRIP_H)
 	if panel != "":
-		draw_rect(Rect2(0, 0, PANEL_W, _panel_h()), Color(0.07, 0.07, 0.1, 0.94))
+		Ui.frame(ci, Rect2(0, 0, PANEL_W, _panel_h() - 2))
 		Panels.draw(self, panel)
+	_ci = self
+
+
+## Called by the field layer every frame.
+func draw_field(ci: CanvasItem) -> void:
+	_ci = ci
+	var size := get_viewport_rect().size
+	_draw_background(size.y - STRIP_H, size)
+	_draw_battlefield()
+	_ci = self
 
 
 ## Q14.2 B: layered hills seeded by the stage, behind the battlefield, at a user-set opacity.
@@ -352,66 +419,83 @@ func _draw_background(top: float, size: Vector2) -> void:
 		pts.append(Vector2(x0 + w, size.y))
 		var c: Color = pal[layer]
 		c.a = bg_alpha * (0.6 + 0.2 * layer)
-		draw_colored_polygon(pts, c)
+		_ci.draw_colored_polygon(pts, c)
 	var g: Color = pal[2]
 	g.a = minf(1.0, bg_alpha + 0.3)
-	draw_rect(Rect2(x0, size.y - 10, w, 3), g)
+	_ci.draw_rect(Rect2(x0, size.y - 10, w, 3), g)
 
 
-func _draw_battlefield() -> void:
+## Battlefield rectangle in canvas units: the 3D view renders here.
+func _field_rect() -> Rect2:
+	var size := get_viewport_rect().size
+	return Rect2(HUD_W, size.y - STRIP_H, minf(size.x - HUD_W, 820.0), STRIP_H)
+
+
+## Move monsters toward their slots and mirror heroes and monsters into the 3D view.
+func _update_view(delta: float) -> void:
 	var ground := _ground()
-	# heroes, back to front
-	for i in range(sim.fighters.size() - 1, -1, -1):
+	view.layout(_field_rect(), get_window().content_scale_factor, ground)
+	view.begin_frame()
+	for i in sim.fighters.size():
 		var f: Dictionary = sim.fighters[i]
-		var c: Dictionary = D.CLASSES[f.cls]
-		var h: Dictionary = sim.heroes[f.cls]
-		var an := _anim_hero(i)
-		var x := hero_x(i) + (8.0 if an.swing > 0.0 and c.range == "melee" else 0.0)
-		var feet := Vector2(x, ground)
-		var dead: bool = f.hp <= 0.0
-		var sprite: String = c.sprites[h.outfit]
-		var sc := HERO_SCALE * (1.5 if sprite == "angel" else 1.0)
-		var armor = h.equip.armor
-		if armor != null:  # Q15.1 B: armor rarity shows as a colored glow under the hero
-			var ac: Color = D.RARITIES[armor.rarity].color
-			ac.a = 0.45
-			draw_circle(feet + Vector2(0, -2), 16.0, ac)
-		var mod := Color(1, 1, 1, 0.35) if dead else (Color(1.8, 0.6, 0.6) if an.hurt > 0.0 else Color.WHITE)
-		var kind := "run" if an.swing > 0.0 else "idle"
-		var body := Gfx.draw_sprite(self, Gfx.frame(sprite, kind, _t + i * 0.3), feet, sc, false, mod)
-		_draw_weapon(f.cls, h, body, an.swing, dead)
-		if not dead:
-			_bar(Vector2(x - 20, body.position.y - 8), 40.0, f.hp / sim.stats(f.cls).hp, Color(0.3, 0.9, 0.4))
-		else:
-			text(Vector2(x - 8, body.position.y - 2), "%d" % ceili(f.dead_t), Color(1, 0.5, 0.5), 12)
-	# monsters, sliding into their slots
+		view.hero(f.cls, Vector2(hero_x(i), ground), sim.heroes[f.cls], f.hp <= 0.0, _anim_hero(i).hurt > 0.0)
 	var live := sim._alive_mobs()
 	for k in live.size():
 		var mob: Dictionary = sim.mobs[live[k]]
 		var tx := _mob_target_x(k)
-		_mob_x[mob.uid] = lerpf(_mob_x.get(mob.uid, tx + 40.0), tx, 0.2)
-		var an := _anim_mob(mob.uid)
-		var x: float = _mob_x[mob.uid] - (8.0 if an.swing > 0.0 and mob.role == "melee" else 0.0)
-		var sc: float = (MOB_SCALE * (1.0 if mob.act_boss else mob.scale))
-		var mod := Color(1.8, 1.8, 1.8) if an.hurt > 0.0 else (Color(1.3, 0.85, 0.85) if mob.boss and not mob.act_boss else Color.WHITE)
-		if mob.elite.size() > 0:
-			mod = Color(1.4, 1.1, 0.5) if an.hurt <= 0.0 else mod
+		var x: float = _mob_x.get(mob.uid, tx + 60.0)
+		_mob_x[mob.uid] = move_toward(x, tx, 120.0 * delta)
+		view.mob(mob, Vector2(_mob_x[mob.uid], ground), absf(_mob_x[mob.uid] - tx) > 1.0, _anim_mob(mob.uid).hurt > 0.0, _t)
+	view.end_frame(delta)
+
+
+func _draw_battlefield() -> void:
+	var ground := _ground()
+	# ground shadows and the armor rarity ring (Q15.1 B) go under the 3D view
+	for i in sim.fighters.size():
+		var feet := Vector2(hero_x(i), ground)
+		_ci.draw_set_transform(feet, 0.0, Vector2(1.0, 0.3))
+		_ci.draw_circle(Vector2.ZERO, 20.0, Color(0, 0, 0, 0.3))
+		var armor = sim.heroes[sim.fighters[i].cls].equip.armor
+		if armor != null:
+			var ac: Color = D.RARITIES[armor.rarity].color
+			ac.a = 0.6
+			_ci.draw_arc(Vector2.ZERO, 22.0, 0, TAU, 32, ac, 3.0)
+		_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var live := sim._alive_mobs()
+	for m in live:
+		var mob: Dictionary = sim.mobs[m]
+		var feet := Vector2(_mob_x.get(mob.uid, 0.0), ground)
+		_ci.draw_set_transform(feet, 0.0, Vector2(1.0, 0.3))
+		_ci.draw_circle(Vector2.ZERO, 16.0 * mob.size * (1.0 if mob.act_boss else mob.scale), Color(0, 0, 0, 0.3))
 		if mob.warn > 0.0:  # telegraph: pulsing red ring under the boss
-			draw_arc(Vector2(x, ground - 2), 30.0 + sin(_t * 20.0) * 4.0, 0, TAU, 24, Color(1, 0.2, 0.2, 0.8), 3.0)
-		var body := Gfx.draw_sprite(self, Gfx.frame(mob.sprite, "run" if an.swing > 0.0 else "idle", _t + mob.uid * 0.17), Vector2(x, ground), sc, true, mod)
-		_bar(Vector2(x - 18, body.position.y - 7), 36.0 if not mob.boss else 60.0, mob.hp / mob.max, Color(0.95, 0.3, 0.3))
+			_ci.draw_arc(Vector2.ZERO, 40.0 + sin(_t * 20.0) * 4.0, 0, TAU, 24, Color(1, 0.2, 0.2, 0.8), 4.0)
+		_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_ci.draw_texture_rect(view.get_texture(), _field_rect(), false)
+	# bars and names above heads
+	for i in sim.fighters.size():
+		var f: Dictionary = sim.fighters[i]
+		var top := ground - view.px_height(f.cls) - 6.0
+		var x := hero_x(i)
+		if f.hp > 0.0:
+			_bar(Vector2(x - 20, top), 40.0, f.hp / sim.stats(f.cls).hp, Color(0.3, 0.9, 0.4))
+		else:
+			text(Vector2(x - 4, top + 4), "%d" % ceili(f.dead_t), Color(1, 0.5, 0.5), 12)
+	for m in live:
+		var mob: Dictionary = sim.mobs[m]
+		var x: float = _mob_x.get(mob.uid, 0.0)
+		var top: float = ground - view.px_height(mob.uid) - (14.0 if mob.fly else 4.0)
+		_bar(Vector2(x - 18, top), 36.0 if not mob.boss else 60.0, mob.hp / mob.max, Color(0.95, 0.3, 0.3))
 		if mob.boss or mob.elite.size() > 0:
 			var nm: String = mob.name
-			text(Vector2(x - text_w(nm, 10) / 2.0, body.position.y - 10), nm, Color(1, 0.85, 0.4), 10)
-	for d in _dying:
-		pass
+			text(Vector2(x - text_w(nm, 10) / 2.0, top - 3), nm, Color(1, 0.85, 0.4), 10)
 	# effects and floating numbers on top
 	for f in _fx:
 		var p: float = f.t / f.loop
 		var pos: Vector2 = f.pos
 		if f.from != Vector2.INF:
 			pos = f.from.lerp(f.pos, f.t / f.dur)
-		Gfx.draw_fx(self, f.id, pos, p, f.scale, f.flip)
+		Gfx.draw_fx(_ci, f.id, pos, p, f.scale, f.flip)
 	for n in _nums:
 		var c: Color = n.col
 		c.a = 1.0 - n.t / 0.9
@@ -420,31 +504,8 @@ func _draw_battlefield() -> void:
 		text(Vector2(HUD_W + 12, get_viewport_rect().size.y - STRIP_H + 18), _toast, Color.GOLD, 14)
 
 
-func _draw_weapon(cls: String, h: Dictionary, body: Rect2, swing: float, dead: bool) -> void:
-	var c: Dictionary = D.CLASSES[cls]
-	var t := Gfx.tex("res://art/0x72/%s.png" % c.weapon_sprite)
-	if t == null or dead:
-		return
-	var it = h.equip.weapon
-	var col := Color.WHITE
-	if it != null:  # Q15.1 B: tint by rarity; Q15.3 B: glow from +7, brighter at +10 and +13
-		col = Color.WHITE.lerp(D.RARITIES[it.rarity].color, 0.55)
-		if it.enh >= 7:
-			var glow: Color = D.RARITIES[it.rarity].color if it.enh < 13 else Color(1.0, 0.95, 0.5)
-			glow.a = (0.25 + (0.2 if it.enh >= 10 else 0.0)) * (0.7 + 0.3 * sin(_t * 4.0))
-			draw_circle(body.get_center() + Vector2(body.size.x * 0.45, 4), 14.0 + (it.enh - 7) * 0.8, glow)
-	var sc := HERO_SCALE * 0.5
-	var size := t.get_size() * sc
-	var hand := Vector2(body.end.x - 6, body.position.y + body.size.y * 0.62)
-	var ang := deg_to_rad(-35.0 if swing > 0.0 else 20.0) if c.range == "melee" else 0.0
-	draw_set_transform(hand, ang, Vector2.ONE)
-	draw_texture_rect(t, Rect2(Vector2(-size.x / 2.0, -size.y + 6), size), false, col)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
 func _bar(pos: Vector2, w: float, frac: float, col: Color) -> void:
-	draw_rect(Rect2(pos, Vector2(w, 4)), Color(0.1, 0.1, 0.1, 0.8))
-	draw_rect(Rect2(pos, Vector2(w * clampf(frac, 0.0, 1.0), 4)), col)
+	Ui.bar(_ci, pos, w, 5.0, frac, col)
 
 
 func stage_text() -> String:
@@ -458,27 +519,41 @@ func stage_text() -> String:
 
 
 func _draw_hud(top: float) -> void:
-	draw_rect(Rect2(0, top, HUD_W, STRIP_H), Color(0.08, 0.08, 0.12, 0.88))
-	var tab := Color(0.35, 0.35, 0.5)
-	var dim := Color(0.22, 0.22, 0.3)
-	button(Rect2(4, top + 4, 200, 20), stage_text(), toggle_panel.bind("portal"), tab if panel == "portal" else Color(0.15, 0.15, 0.22),
+	Ui.frame(_ci, Rect2(2, top + 2, HUD_W - 4, STRIP_H - 4))
+	# stage ribbon (opens the Portal), settings and quit
+	button(Rect2(8, top + 7, 186, 24), stage_text(), toggle_panel.bind("portal"), "active" if panel == "portal" else "normal",
 		sim.feature_unlocked("portal"), 11)
-	text(Vector2(8, top + 40), "Vàng %s" % fmt(sim.gold), Color.GOLD, 13)
-	var lvs := sim.party.map(func(c): return "%s %d" % [D.CLASSES[c].short, sim.heroes[c].level])
-	text(Vector2(8, top + 58), " · ".join(lvs), Color.WHITE, 11)
-	text(Vector2(8, top + 75), "DPS %s" % fmt(int(sim.team_dps())), Color(0.8, 0.8, 0.9), 11)
+	button(Rect2(198, top + 7, 22, 24), "⚙", toggle_panel.bind("settings"), "active" if panel == "settings" else "normal", true, 11)
+	button(Rect2(222, top + 7, 22, 24), "×", _quit, "danger", true, 12)
+	# party portraits with level and HP
+	for i in sim.party.size():
+		var c: String = sim.party[i]
+		var ctr := Vector2(28 + i * 44, top + 54)
+		var f: Dictionary = sim.fighters[i] if i < sim.fighters.size() else {}
+		var alive: bool = f.is_empty() or f.hp > 0.0
+		Ui.medallion(_ci, ctr, 17.0, Ui.GOLD if alive else Color(0.5, 0.3, 0.3))
+		var pt := Gfx.portrait(c, int(34 * get_window().content_scale_factor))
+		if pt != null:
+			_ci.draw_texture_rect(pt, Rect2(ctr - Vector2(17, 19), Vector2(34, 34)), false, Color.WHITE if alive else Color(0.45, 0.4, 0.45))
+		text(ctr + Vector2(-17, 19), "%d" % sim.heroes[c].level, Ui.TEXT, 10)
+		if not f.is_empty():
+			Ui.bar(_ci, ctr + Vector2(-16, 22), 32.0, 4.0, f.hp / sim.stats(c).hp, Color(0.4, 0.9, 0.45))
+	# gold, dps, chest timer, stones
+	Ui.coin(_ci, Vector2(16, top + 91), 7.0)
+	text(Vector2(26, top + 97), fmt(sim.gold), Ui.GOLD, 15)
 	var next_chest := maxi(0, ceili(sim.chest_ready_at - Time.get_unix_time_from_system()))
-	text(Vector2(8, top + 92), "Rương sau %d:%02d" % [next_chest / 60, next_chest % 60], Color(0.7, 0.7, 0.7), 11)
-	text(Vector2(8, top + 108), "Đá %s" % " ".join(sim.stones.map(func(n): return str(n))), Color(0.5, 0.75, 1.0), 11)
+	text(Vector2(8, top + 113), "DPS %s · rương %d:%02d" % [fmt(int(sim.team_dps())), next_chest / 60, next_chest % 60], Ui.TEXT_DIM, 10)
+	for k in 5:
+		Ui.gem(_ci, Vector2(13 + k * 27, top + 126), 5.0, Ui.GEMS[k])
+		text(Vector2(20 + k * 27, top + 130), fmt(sim.stones[k]), Ui.TEXT, 9)
+	# panel tabs and the chest
 	var tabs := [["Túi %d" % sim.bag.size(), "bag", ""], ["Đội", "hero", "hero"], ["Rèn", "forge", "forge"], ["Rune", "rune", "rune"]]
 	for i in tabs.size():
 		var tb: Array = tabs[i]
 		var ok: bool = tb[2] == "" or sim.feature_unlocked(tb[2])
-		button(Rect2(150, top + 30 + i * 22, 74, 19), tb[0] if ok else "🔒", toggle_panel.bind(tb[1]), tab if panel == tb[1] else dim, ok, 11)
-	var chest_col := Color(0.4, 0.28, 0.12) if sim.chests > 0 else Color(0.2, 0.2, 0.24)
-	button(Rect2(150, top + 118, 74, 18), "Rương x%d" % sim.chests, func(): sim.open_chest(), chest_col, sim.chests > 0, 11)
-	button(Rect2(HUD_W - 22, top + 4, 18, 18), "×", _quit, Color(0.5, 0.15, 0.15))
-	button(Rect2(HUD_W - 22, top + 26, 18, 18), "⚙", toggle_panel.bind("settings"), dim)
+		button(Rect2(148 + (i % 2) * 48, top + 36 + (i / 2) * 28, 46, 26), tb[0] if ok else "🔒", toggle_panel.bind(tb[1]),
+			"active" if panel == tb[1] else "normal", ok, 11)
+	button(Rect2(148, top + 94, 94, 26), "Rương x%d" % sim.chests, func(): sim.open_chest(), "chest", sim.chests > 0, 11)
 
 
 static func fmt(n: int) -> String:

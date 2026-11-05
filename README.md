@@ -2,7 +2,7 @@
 
 Game idle RPG chạy trong một dải trong suốt ngay trên thanh taskbar (trên macOS là ngay trên Dock). Đội hero tự đánh quái, rơi đồ, mở rương theo giờ thực, trong lúc bạn làm việc khác. Lấy cảm hứng từ thể loại "bottom-of-your-screen" và *TBH: Task Bar Hero*, nhưng toàn bộ tên, hình và âm thanh đều là của dự án này.
 
-Làm bằng **Godot 4.7** (GDScript). Thiết kế theo các quyết định trong [docs/core-rpg-quyet-dinh.docx](docs/core-rpg-quyet-dinh.docx). Hình nhân vật và quái từ [0x72 DungeonTileset II](https://0x72.itch.io/dungeontileset-ii) (CC0), hiệu ứng skill từ [pixelfx](https://github.com/patch-gg/pixelfx) (MIT), âm thanh và nhạc tạo bằng code.
+Làm bằng **Godot 4.7** (GDScript). Thiết kế theo các quyết định trong [docs/core-rpg-quyet-dinh.docx](docs/core-rpg-quyet-dinh.docx). Nhân vật và quái là model 3D chibi fantasy từ [KayKit](https://github.com/KayKit-Game-Assets) và [Quaternius](https://quaternius.com/packs/ultimatemonsters.html) (CC0), làm gọn bằng Blender và tô bằng shader cel lì; icon vũ khí từ [0x72 DungeonTileset II](https://0x72.itch.io/dungeontileset-ii) (CC0), hiệu ứng skill từ [pixelfx](https://github.com/patch-gg/pixelfx) (MIT), âm thanh và nhạc tạo bằng code.
 
 ![Trận đánh](docs/battle.png)
 ![Hiệu ứng chí mạng](docs/boss.png)
@@ -61,6 +61,7 @@ Kết quả là một file `.exe` duy nhất (khoảng 109 MB), đã nhúng sẵ
 | --- | --- |
 | `game/tools/run_tests.sh game` | Chạy toàn bộ test; in `PASS` hoặc `FAIL`. Đừng chạy `test_sim.gd` trực tiếp rồi tin exit code: Godot vẫn chạy tiếp và trả 0 khi `assert` thất bại hay script lỗi parse. |
 | `godot --headless --path game --script res://tools/balance.gd -- 504 [seed]` | Bot chơi 3 tuần (khoảng 10 phút), in tiến độ mỗi giờ, thời điểm tới từng màn và hết từng độ khó (`doneN`), máu boss khi cả đội gục, và quái còn đứng khi gục ở Đày Đọa. Dùng để chỉnh số trong `data.gd`. |
+| `blender -b -P game/tools/build_models.py -- <src3d> game/art3d` rồi `godot --path game --script res://tools/measure_models.gd` | Làm lại model 3D từ gói gốc và đo chiều cao; xem `game/art3d/README.md`. |
 | `godot --path game --script res://tools/screenshot.gd -- out.png [bag\|hero\|forge\|rune\|portal\|settings] [stage=24] [diff=1] [boss] [t=3]` | Render game với một save mẫu ra PNG, không đụng tới save thật. |
 
 ## Cấu trúc
@@ -71,14 +72,18 @@ game/
   data.gd              mọi số thiết kế: class, skill, quái, đồ, rune, độ khó, hằng số cân bằng
   sim.gd               luật chơi (chiến đấu, đồ, rèn, tẩy dòng, rune, tiến trình, save), không vẽ gì
   main.tscn, main.gd   cửa sổ, chiến trường, HUD, hệ nút, sự kiện -> hiệu ứng và âm thanh
+  view3d.gd            trận đánh 3D: dựng nhân vật, animation, vũ khí theo đồ, shader cel
+  field.gd             lớp vẽ: chiến trường mỗi frame, HUD và panel vào texture cache
+  ui.gd                phong cách giao diện: khung, nút, thanh, ngọc, xu
   panels.gd            các panel: Túi, Đội, Rèn, Rune, Portal, Cài đặt
-  gfx.gd               tải frame 0x72 và phát sprite sheet pixelfx
+  gfx.gd               phát sprite sheet pixelfx, icon, chân dung hero
   art.gd               icon dạng lưới ký tự
   sfx.gd, music.gd     âm thanh và nhạc tạo bằng code
-  art/0x72/            hình nhân vật, quái, vũ khí (CC0)
+  art3d/               model 3D (.glb), chân dung, manifest.json
+  art/0x72/            icon vũ khí (CC0)
   fx/                  sprite sheet hiệu ứng từ pixelfx (MIT)
   test_sim.gd          test
-  tools/               run_tests.sh, bot cân bằng, công cụ chụp ảnh
+  tools/               run_tests.sh, bot cân bằng, chụp ảnh, build và đo model 3D
 docs/                  ảnh minh họa, file quyết định thiết kế, review
 tbh-chi-tiet.md        nghiên cứu chi tiết về TBH
 thiet-ke-game-tuong-tu.md  tài liệu thiết kế ban đầu
@@ -91,7 +96,7 @@ Theo bot (mỗi phút ghé một lần, không dùng Vùng Hỗn Mang và tẩy 
 
 ## Bản quyền nội dung
 
-- Nhân vật, quái, vũ khí: 0x72 DungeonTileset II (CC0). Hiệu ứng: pixelfx (MIT, giấy phép ở `game/fx/LICENSE-pixelfx.txt`). Chi tiết ở `game/art/README.md`.
+- Nhân vật, quái 3D: KayKit và Quaternius (CC0), chi tiết ở `game/art3d/README.md`. Icon vũ khí: 0x72 DungeonTileset II (CC0). Hiệu ứng: pixelfx (MIT, giấy phép ở `game/fx/LICENSE-pixelfx.txt`). Chi tiết ở `game/art/README.md`.
 - Icon và âm thanh, nhạc: của dự án.
 - Tên bậc phẩm “Immortal” trùng một bậc của TBH (đã chọn trong file quyết định); nên đổi trước khi phát hành.
 

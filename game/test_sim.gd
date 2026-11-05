@@ -68,8 +68,8 @@ func test_progress() -> void:
 	var r := RandomNumberGenerator.new()
 	for seed in 50:
 		r.seed = seed
-		var e := s._make_mob("orc_warrior", 80, r, 4)
-		var full := Sim.mob_hp(80) * D.MOBS.orc_warrior.hp * D.ELITE_HP
+		var e := s._make_mob("orc", 80, r, 4)
+		var full := Sim.mob_hp(80) * D.MOBS.orc.hp * D.ELITE_HP
 		for ak in e.elite:
 			full *= D.ELITE_AFFIXES[ak].get("hp", 1.0)
 		assert(e.elite.size() == 4 and e.max <= full * (1.0 + 0.04 * (s.wave - 1)) + 0.01)
@@ -337,18 +337,29 @@ func test_save() -> void:
 
 
 func test_assets() -> void:
+	var man: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://art3d/manifest.json"))
+	var models := []
 	for c in D.CLASSES:
-		for sp in D.CLASSES[c].sprites:
-			assert(ResourceLoader.exists("res://art/0x72/%s_idle_anim_f0.png" % sp), "missing sprite " + sp)
-		assert(ResourceLoader.exists("res://art/0x72/%s.png" % D.CLASSES[c].weapon_sprite))
+		models.append(c)
+		assert(D.HERO_MODELS.has(c), "no gear table for " + c)
+		assert(ResourceLoader.exists("res://art3d/portraits/%s.png" % c), "missing portrait " + c)
+		var g: Dictionary = D.HERO_MODELS[c]
+		var node: Node = load("res://art3d/%s.glb" % c).instantiate()
+		for n in g.gear + ([g.hat] if g.hat != "" else []):  # every mesh named in the gear table exists in the model
+			assert(node.find_child(n, true, false) != null, "%s has no mesh %s" % [c, n])
+		node.free()
 		for sk in D.SKILLS[c]:
 			if sk.fx != "":
 				assert(FileAccess.file_exists("res://fx/%s.json" % sk.fx), "missing fx " + sk.fx)
 	for id in D.MOBS:
-		var sp: String = D.MOBS[id].sprite
-		assert(ResourceLoader.exists("res://art/0x72/%s_idle_anim_f0.png" % sp) or ResourceLoader.exists("res://art/0x72/%s_anim_f0.png" % sp), "missing mob " + sp)
+		models.append(D.MOBS[id].model)
 	for b in D.ACT_BOSSES:
-		assert(ResourceLoader.exists("res://art/0x72/%s_idle_anim_f0.png" % b.sprite))
+		models.append(b.model)
+	for mdl in models:
+		assert(ResourceLoader.exists("res://art3d/%s.glb" % mdl), "missing model " + mdl)
+		assert(man.has(mdl) and man[mdl].height > 0.5, "manifest height for " + mdl)
+		for a in ["idle", "run", "attack", "hit", "death"]:
+			assert(a in man[mdl].anims, "%s has no %s animation" % [mdl, a])
 	var Art := preload("res://art.gd")
 	for n in Art.SPRITES:
 		var rows: Array = Art.SPRITES[n]

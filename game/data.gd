@@ -55,28 +55,35 @@ const FIRST_KILL_GOLD := 5.0  # Q13.4 note: the first boss kill pays much more
 const CLASSES := {
 	"knight": {"name": "Hiệp Sĩ", "short": "Hiệp", "role": "Tank", "dmg": "phys", "range": "melee",
 		"hp": 120, "atk": 10, "armor": 8, "mres": 10, "aspd": 1.4, "crit": 0.05, "critdmg": 1.5, "block": 0.10,
-		"g_hp": 12, "g_atk": 2.0, "g_armor": 1.2, "weapon": "sword", "armor_kind": "heavy",
-		"sprites": ["knight_m", "knight_f"], "weapon_sprite": "weapon_knight_sword", "unlock": ""},
+		"g_hp": 12, "g_atk": 2.0, "g_armor": 1.2, "weapon": "sword", "armor_kind": "heavy", "unlock": ""},
 	"ranger": {"name": "Cung Thủ", "short": "Cung", "role": "Tầm xa", "dmg": "phys", "range": "ranged",
 		"hp": 80, "atk": 9, "armor": 3, "mres": 10, "aspd": 2.0, "crit": 0.15, "critdmg": 1.75,
-		"g_hp": 7, "g_atk": 1.9, "g_armor": 0.5, "weapon": "bow", "armor_kind": "light",
-		"sprites": ["elf_m", "elf_f"], "weapon_sprite": "weapon_bow", "unlock": "unlock_ranger"},
+		"g_hp": 7, "g_atk": 1.9, "g_armor": 0.5, "weapon": "bow", "armor_kind": "light", "unlock": "unlock_ranger"},
 	"sorcerer": {"name": "Pháp Sư", "short": "Pháp", "role": "Diệt boss", "dmg": "magic", "range": "ranged",
 		"hp": 70, "atk": 13, "armor": 2, "mres": 20, "aspd": 1.0, "crit": 0.05, "critdmg": 1.5,
-		"g_hp": 6, "g_atk": 2.6, "g_armor": 0.4, "weapon": "staff", "armor_kind": "robe",
-		"sprites": ["wizzard_m", "wizzard_f"], "weapon_sprite": "weapon_red_magic_staff", "unlock": "unlock_sorcerer"},
+		"g_hp": 6, "g_atk": 2.6, "g_armor": 0.4, "weapon": "staff", "armor_kind": "robe", "unlock": "unlock_sorcerer"},
 	"cleric": {"name": "Tu Sĩ", "short": "Tu", "role": "Hồi máu", "dmg": "magic", "range": "ranged",
 		"hp": 85, "atk": 7, "armor": 4, "mres": 20, "aspd": 1.2, "crit": 0.05, "critdmg": 1.5,
-		"g_hp": 8, "g_atk": 1.4, "g_armor": 0.6, "weapon": "holy", "armor_kind": "robe",
-		"sprites": ["angel", "doc"], "weapon_sprite": "weapon_green_magic_staff", "unlock": "unlock_cleric"},
+		"g_hp": 8, "g_atk": 1.4, "g_armor": 0.6, "weapon": "holy", "armor_kind": "robe", "unlock": "unlock_cleric"},
 	"berserker": {"name": "Cuồng Chiến", "short": "Cuồng", "role": "Cận chiến", "dmg": "phys", "range": "melee",
 		"hp": 110, "atk": 11, "armor": 5, "mres": 10, "aspd": 1.3, "crit": 0.08, "critdmg": 1.6, "lifesteal": 0.05,
-		"g_hp": 11, "g_atk": 2.2, "g_armor": 0.8, "weapon": "axe", "armor_kind": "heavy",
-		"sprites": ["dwarf_m", "dwarf_f"], "weapon_sprite": "weapon_waraxe", "unlock": "unlock_berserker"},
+		"g_hp": 11, "g_atk": 2.2, "g_armor": 0.8, "weapon": "axe", "armor_kind": "heavy", "unlock": "unlock_berserker"},
 	"assassin": {"name": "Sát Thủ", "short": "Sát", "role": "Chí mạng", "dmg": "phys", "range": "melee",
 		"hp": 75, "atk": 10, "armor": 3, "mres": 10, "aspd": 1.8, "crit": 0.25, "critdmg": 2.0, "dodge": 0.10,
-		"g_hp": 7, "g_atk": 2.0, "g_armor": 0.5, "weapon": "dagger", "armor_kind": "light",
-		"sprites": ["lizard_m", "lizard_f"], "weapon_sprite": "weapon_duel_sword", "unlock": "unlock_assassin"},
+		"g_hp": 7, "g_atk": 2.0, "g_armor": 0.5, "weapon": "dagger", "armor_kind": "light", "unlock": "unlock_assassin"},
+}
+## Q15.1 B: equipment shows on the 3D model (art3d/<class>.glb, KayKit). gear = optional meshes, all hidden
+## except `low` (weapon below rarity view3d.HIGH_WEAPON) or `high`; the knight's shield follows armor rarity.
+## hat is hidden by the second outfit (Q15.4 B).
+const HERO_MODELS := {
+	"knight": {"gear": ["1H_Sword", "1H_Sword_Offhand", "2H_Sword", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "Spike_Shield"],
+		"low": ["1H_Sword"], "high": ["1H_Sword"], "hat": "Knight_Helmet",
+		"shields": ["Round_Shield", "Round_Shield", "Badge_Shield", "Badge_Shield", "Rectangle_Shield", "Spike_Shield"]},
+	"ranger": {"gear": ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"], "low": ["1H_Crossbow"], "high": ["2H_Crossbow"], "hat": ""},
+	"sorcerer": {"gear": ["1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"], "low": ["1H_Wand", "Spellbook"], "high": ["2H_Staff"], "hat": "Mage_Hat"},
+	"cleric": {"gear": ["1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"], "low": ["1H_Wand", "Spellbook_open"], "high": ["2H_Staff", "Spellbook_open"], "hat": "Mage_Hat"},
+	"berserker": {"gear": ["1H_Axe", "1H_Axe_Offhand", "Barbarian_Round_Shield", "2H_Axe", "Mug"], "low": ["1H_Axe", "Barbarian_Round_Shield"], "high": ["2H_Axe"], "hat": "Barbarian_Hat"},
+	"assassin": {"gear": ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"], "low": ["Knife", "Knife_Offhand"], "high": ["Knife", "Knife_Offhand"], "hat": ""},
 }
 const CLASS_ORDER := ["knight", "ranger", "sorcerer", "cleric", "berserker", "assassin"]
 
@@ -125,28 +132,29 @@ const PASSIVES := [
 	{"id": "p_aspd", "name": "Nhanh Nhẹn", "stat": "aspd_pct", "per": 0.006},
 ]
 
-# --- monsters (0x72 sprites) ---
+# --- monsters (3D models in art3d/) ---
 ## role: melee hits the front hero; ranged picks a random hero; pierce hits every hero (Q6.2 note).
 ## Ranged types only appear from local stage `from`.
+## 3D models live in art3d/ (built by tools/build_models.py). size = height on screen relative to a hero.
 const MOBS := {
-	"goblin": {"name": "Yêu Tinh", "hp": 0.9, "atk": 1.0, "aspd": 1.2, "armor": 0.8, "mres": 0, "dodge": 0.05, "role": "melee", "dmg": "phys", "sprite": "goblin"},
-	"tiny_zombie": {"name": "Xác Sống Nhỏ", "hp": 1.1, "atk": 0.9, "aspd": 0.9, "armor": 1.0, "mres": 5, "dodge": 0.0, "role": "melee", "dmg": "phys", "sprite": "tiny_zombie"},
-	"swampy": {"name": "Bùn Lầy", "hp": 1.4, "atk": 0.8, "aspd": 0.7, "armor": 1.4, "mres": 10, "dodge": 0.0, "role": "melee", "dmg": "phys", "sprite": "swampy"},
-	"imp": {"name": "Tiểu Quỷ", "hp": 0.7, "atk": 1.1, "aspd": 0.8, "armor": 0.5, "mres": 20, "dodge": 0.10, "role": "ranged", "dmg": "magic", "sprite": "imp", "from": 5},
-	"orc_warrior": {"name": "Chiến Binh Orc", "hp": 1.2, "atk": 1.1, "aspd": 1.0, "armor": 1.3, "mres": 5, "dodge": 0.0, "role": "melee", "dmg": "phys", "sprite": "orc_warrior"},
-	"skelet": {"name": "Bộ Xương", "hp": 0.8, "atk": 1.0, "aspd": 1.4, "armor": 0.7, "mres": 15, "dodge": 0.08, "role": "melee", "dmg": "phys", "sprite": "skelet"},
-	"masked_orc": {"name": "Orc Mặt Nạ", "hp": 1.6, "atk": 0.9, "aspd": 0.8, "armor": 1.8, "mres": 10, "dodge": 0.0, "role": "melee", "dmg": "phys", "sprite": "masked_orc"},
-	"orc_shaman": {"name": "Pháp Sư Orc", "hp": 0.8, "atk": 1.2, "aspd": 0.8, "armor": 0.6, "mres": 25, "dodge": 0.05, "role": "ranged", "dmg": "magic", "sprite": "orc_shaman", "from": 4},
-	"chort": {"name": "Quỷ Sừng", "hp": 1.1, "atk": 1.2, "aspd": 1.1, "armor": 1.1, "mres": 15, "dodge": 0.05, "role": "melee", "dmg": "phys", "sprite": "chort"},
-	"wogol": {"name": "Ma Rừng", "hp": 1.0, "atk": 1.0, "aspd": 1.3, "armor": 0.9, "mres": 15, "dodge": 0.12, "role": "melee", "dmg": "phys", "sprite": "wogol"},
-	"ice_zombie": {"name": "Xác Băng", "hp": 1.5, "atk": 0.9, "aspd": 0.8, "armor": 1.5, "mres": 20, "dodge": 0.0, "role": "melee", "dmg": "magic", "sprite": "ice_zombie"},
-	"necromancer": {"name": "Pháp Sư Xương", "hp": 0.9, "atk": 1.0, "aspd": 0.7, "armor": 0.7, "mres": 30, "dodge": 0.05, "role": "pierce", "dmg": "magic", "sprite": "necromancer", "from": 3},
+	"slime": {"name": "Slime Hồng", "hp": 0.9, "atk": 1.0, "aspd": 1.2, "armor": 0.8, "mres": 0, "dodge": 0.05, "role": "melee", "dmg": "phys", "model": "slime", "size": 0.55},
+	"mushnub": {"name": "Nấm Lùn", "hp": 1.1, "atk": 0.9, "aspd": 0.9, "armor": 1.0, "mres": 5, "dodge": 0.0, "role": "melee", "dmg": "phys", "model": "mushnub", "size": 0.7},
+	"frog": {"name": "Ếch Độc", "hp": 1.4, "atk": 0.8, "aspd": 0.7, "armor": 1.4, "mres": 10, "dodge": 0.0, "role": "melee", "dmg": "phys", "model": "frog", "size": 0.8},
+	"goleling": {"name": "Dơi Sừng", "hp": 0.7, "atk": 1.1, "aspd": 0.8, "armor": 0.5, "mres": 20, "dodge": 0.10, "role": "ranged", "dmg": "magic", "model": "goleling", "size": 0.5, "fly": true, "from": 5},
+	"orc": {"name": "Chiến Binh Orc", "hp": 1.2, "atk": 1.1, "aspd": 1.0, "armor": 1.3, "mres": 5, "dodge": 0.0, "role": "melee", "dmg": "phys", "model": "orc", "size": 0.95},
+	"skeleton": {"name": "Bộ Xương", "hp": 0.8, "atk": 1.0, "aspd": 1.4, "armor": 0.7, "mres": 15, "dodge": 0.08, "role": "melee", "dmg": "phys", "model": "skeleton", "size": 0.9},
+	"cactoro": {"name": "Xương Rồng", "hp": 1.6, "atk": 0.9, "aspd": 0.8, "armor": 1.8, "mres": 10, "dodge": 0.0, "role": "melee", "dmg": "phys", "model": "cactoro", "size": 1.0},
+	"tribal": {"name": "Pháp Sư Mặt Nạ", "hp": 0.8, "atk": 1.2, "aspd": 0.8, "armor": 0.6, "mres": 25, "dodge": 0.05, "role": "ranged", "dmg": "magic", "model": "tribal", "size": 0.85, "fly": true, "from": 4},
+	"blue_demon": {"name": "Quỷ Xanh", "hp": 1.1, "atk": 1.2, "aspd": 1.1, "armor": 1.1, "mres": 15, "dodge": 0.05, "role": "melee", "dmg": "phys", "model": "blue_demon", "size": 0.95},
+	"ghost": {"name": "Bóng Ma", "hp": 1.0, "atk": 1.0, "aspd": 1.3, "armor": 0.9, "mres": 15, "dodge": 0.12, "role": "melee", "dmg": "phys", "model": "ghost", "size": 0.8, "fly": true},
+	"yeti": {"name": "Người Tuyết", "hp": 1.5, "atk": 0.9, "aspd": 0.8, "armor": 1.5, "mres": 20, "dodge": 0.0, "role": "melee", "dmg": "magic", "model": "yeti", "size": 1.0},
+	"skeleton_mage": {"name": "Pháp Sư Xương", "hp": 0.9, "atk": 1.0, "aspd": 0.7, "armor": 0.7, "mres": 30, "dodge": 0.05, "role": "pierce", "dmg": "magic", "model": "skeleton_mage", "size": 0.95, "from": 3},
 }
-const ACT_MOBS := [["goblin", "tiny_zombie", "swampy", "imp"], ["orc_warrior", "skelet", "masked_orc", "orc_shaman"], ["chort", "wogol", "ice_zombie", "necromancer"]]
+const ACT_MOBS := [["slime", "mushnub", "frog", "goleling"], ["orc", "skeleton", "cactoro", "tribal"], ["blue_demon", "ghost", "yeti", "skeleton_mage"]]
 const ACT_BOSSES := [
-	{"name": "Chúa Tể Ogre", "sprite": "ogre"},
-	{"name": "Xác Sống Khổng Lồ", "sprite": "big_zombie"},
-	{"name": "Đại Ác Quỷ", "sprite": "big_demon"},
+	{"name": "Vua Nấm Gai", "model": "mushroom_king", "size": 1.7},
+	{"name": "Vua Xương Rồng", "model": "cactus_king", "size": 1.6},
+	{"name": "Rồng Lửa", "model": "dragon", "size": 1.6, "fly": true},
 ]
 ## Q6.10 B: boss skills. slam = telegraphed hit on every hero, summon = 2 adds, enrage = faster below 30% HP.
 const BOSS_SKILLS := ["slam", "summon", "enrage"]
